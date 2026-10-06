@@ -1,0 +1,30 @@
+# 비공개 자료(과제 원문·회사 맥락)
+_private/
+
+# 비밀 키
+.env
+
+# API 원본 응답(다시 받을 수 있음). data/processed/는 제출에 포함하므로 올린다
+data/raw/
+# 수집 스크립트가 매번 다시 만드는 중간 파일
+data/reference/trade_parcels.csv
+
+# 개인 Claude Code 설정(공유 설정 .claude/settings.json은 올린다)
+.claude/settings.local.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.ipynb_checkpoints/
+
+# 실행 결과·임시
+output.csv
+*.log
+.DS_Store
+Thumbs.db
+~$*
+
+# 개인 학습 자료(강의 PDF, 저작권·비공개)
+과제 참고/
