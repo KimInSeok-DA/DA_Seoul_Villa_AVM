@@ -207,6 +207,8 @@ class MLModel:
         resid = b1 * float(np.exp(self.models["잔차"].predict(X)[0])) if out["method"] == "공시비율" else b1
         est = math.sqrt(direct * resid)
         f = est / b1
+        by = self.bld["build_year"].get(out["pnu"], np.nan)
+        out.update(age=BASE_DATE.year - by if pd.notna(by) else np.nan)  # 구간·신뢰도 오차 점수용(1007_13)
         out.update(price_b1=b1, price_ml_direct=direct, price_ml_resid=resid, ml_factor=f, price_est=est,
                    price_low=out["price_low"] * f, price_high=out["price_high"] * f)
         src = f"XGBoost 잔차 {resid / 1e8:.2f}억" if out["method"] == "공시비율" else "㎡단가 추정"

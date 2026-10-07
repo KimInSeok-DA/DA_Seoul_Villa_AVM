@@ -28,7 +28,7 @@ def main():
     out = ROOT / "outputs"
     out.mkdir(exist_ok=True)
     keep = ["fold", "scenario", "area_blank", "pnu", "sgg_cd", "method", "tier", "n", "area_used", "true_area",
-            "b_sd", "b_gap", "area_sd", "price_b1", "price_ml_direct", "price_ml_resid", "ml_factor", "price_est", "price_low", "price_high", "confidence", "actual", "ape", "log_err"]
+            "b_sd", "b_gap", "area_sd", "price_b1", "price_ml_direct", "price_ml_resid", "ml_factor", "floor", "age", "price_est", "price_low", "price_high", "confidence", "actual", "ape", "log_err"]
     pred.assign(flags=pred["flags"].map("|".join))[keep + ["flags"]].to_csv(
         out / "calibration_preds.csv", index=False, encoding="utf-8-sig")
     cal.table.to_csv(out / "calibration_table.csv", index=False, encoding="utf-8-sig")

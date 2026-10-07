@@ -44,7 +44,7 @@ rel.columns = [SGG_NAME[c] for c in rel.columns]
 np.exp(rel).round(4).to_csv(OUT / "time_index.csv", encoding="utf-8-sig")  # 기준월 대비 배율
 ax = np.exp(rel).plot(figsize=(10, 4), title="구별 시점 지수 (2026-08 = 1.0, 실거래가/공시가격 비율 기준)")
 ax.axhline(1, color="gray", lw=0.8); ax.set_ylabel("기준월 대비 배율"); plt.tight_layout(); plt.show()
-np.exp(rel).iloc[[0, 12, 24, 36, 48, 60, -1]].round(3)"""),
+np.exp(rel).iloc[list(range(0, len(rel) - 1, 12)) + [-1]].round(3)  # 12개월 간격 + 마지막 달(학습 기간 TRAIN_YEARS에 맞춰)"""),
     md("## 2. 기준선 비교"),
     code("""runs = {}
 for sc in "AB":
