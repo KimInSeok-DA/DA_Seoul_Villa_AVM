@@ -31,3 +31,4 @@ Thumbs.db
 
 # predict.py 실행 결과(테스트용)
 output*.csv
+input.csv

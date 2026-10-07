@@ -8,7 +8,7 @@
 
 - 로드맵 대비 반나절 앞섬: 10-07 예정이던 실거래 수집까지 끝남(6년치, 전월세 포함)
 - Git: 저장소 **공개**(사용자, 10-06). 작업은 브랜치 → PR → 머지(사용자). PR #1 `setup/data-collection`(환경 설정·수집 코드·문서) 머지 완료 `76d6a52`, PR #2 `fix/subway-public-data`(지하철역 공공데이터 교체) 머지 완료 `26f93b3`
-- `.env`에 키 3개(data.go.kr·VWorld·Kakao). 환경은 uv(`pyproject.toml`·`uv.lock`, Python 3.14) — `uv sync`로 설치, `uv run python ...`으로 실행. 모델 패키지(scikit-learn 등)는 쓸 때 `uv add`
+- `.env`에 키 3개(data.go.kr·VWorld·Kakao). 환경은 uv(`pyproject.toml`·`uv.lock`) + pip용 `requirements.txt`(`uv export`로 생성, 의존성을 바꾸면 다시 생성). Python 3.12 이상 — 3.12·3.13·3.14 새 환경에서 `python predict.py` 규격 통과·출력 동일 확인(3.11은 numpy 2.5가 지원 안 함). 모델 패키지는 쓸 때 `uv add` 후 requirements 재생성
 - 건물 정보 수집·정제 완료: `data/processed/apt_price.csv`(공시가격), `data/processed/bld_title.csv`(표제부)
 
 ## 다음 작업
