@@ -358,10 +358,11 @@ def lookup_public(refs, pnu, floor, ho, area_m2):
     return None, None, None, []
 
 
-def estimate(refs, model, row, use_public=True, calibrator=None, ml=None):
+def estimate(refs, model, row, use_public=True, calibrator=None, ml=None, live=None):
     """입력 1행(dict: sigungu, dong, jibun, floor, ho, area_m2) → 출력 dict.
     use_public=False면 공시가격을 쓰지 않는 비교용 기준선(㎡당 단가 × 면적).
     ml(ml.MLModel)이 있으면 B1 추정을 XGBoost로 보정(1007_10, 최종 모델)
+    live(live_lookup.LiveLookup)가 있으면 수집 데이터에 없는 지번의 공시가격·표제부를 실행 중 조회(1007_12)
     calibrator가 있으면 구간·신뢰도를 검증 오차로 보정(1007_09), 없으면 근거 수준 규칙(1007_08)"""
     pnu, bjd, sgg = parse_address(refs, row.get("sigungu"), row.get("dong"), row.get("jibun"))
     floor = parse_floor(row.get("floor"))
@@ -371,7 +372,7 @@ def estimate(refs, model, row, use_public=True, calibrator=None, ml=None):
     known = pnu in refs.parcels.index or pnu in refs.ap_by_pnu or pnu in model.n_trades.index
     if not known:  # 필지·공시가격·거래 어디에도 없으면 존재하지 않는 지번으로 본다(필지는 3개 구 전체를 수집)
         raise InputError(f"주소 해석 불가(지번 {row.get('jibun')} 필지 없음)")
-    flags = []
+    flags = live.fill(refs, pnu, ml) if live is not None else []
     pp, p_area, p_year, pflags = lookup_public(refs, pnu, floor, ho, area)
     flags += pflags
     if not use_public:

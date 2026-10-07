@@ -38,20 +38,20 @@ python predict.py --input input.csv --output output.csv
 
 - 입력 컬럼: `id, sigungu, dong, jibun, floor, ho, area_m2` (`ho`, `area_m2`는 비어 있을 수 있음)
 - 출력 컬럼: `id, price_est, price_low, price_high, confidence, basis, status`
-- 외부 API를 부르지 않는다. 실행할 때 저장소의 정제 데이터로 모델을 다시 맞춘다(20건 약 25초). 새 거래를 정제 데이터에 더하고 다시 실행하면 그대로 반영된다
+- 저장소의 정제 데이터로 실행할 때마다 모델을 다시 맞춘다(20건 약 23초). 입력 지번이 수집 데이터에 없을 때만 공시가격·건축물대장을 실행 중에 조회한다([1007_12](docs/의사결정/1007_12_실행_중_조회.md)) — 키가 없으면 조회 없이 추정을 계속하고 `basis`에 적는다. 새 거래를 정제 데이터에 더하고 다시 실행하면 그대로 반영된다
 - `price_low`~`price_high`는 80% 구간, `confidence`는 검증에서 비슷한 조건의 추정이 실거래가 ±20% 안에 든 비율이다. 둘 다 검증 오차로 만든 보정표 `data/processed/calibration.json`(`src/build_calibration.py`)으로 정한다
 - 규격 검사: `python tests/check_output.py --input tests/sample_input.csv --output output.csv --expect-ok`
 - 예외 입력 예시: `tests/edge_input.csv`(권역 밖, 주소 해석 불가, 지하 표기, 면적 없음 등)
 
 ## 환경 변수
 
-**`predict.py` 실행에는 키가 필요 없다**(필요한 데이터를 미리 받아 저장소에 넣어 둠). 아래 키는 `src/collect_*.py`로 데이터를 다시 받을 때만 쓴다. `.env.example`을 `.env`로 복사하고 키를 넣는다. 키는 저장소에 올리지 않는다.
+**`predict.py`는 키 없이도 돈다**(필요한 데이터를 미리 받아 저장소에 넣어 둠). 키가 있으면 수집 데이터에 없는 지번의 공시가격(`VWORLD_API_KEY`)·건축물대장(`DATA_GO_KR_API_KEY`)을 실행 중에 조회해 더 정확하게 추정한다(없으면 ㎡당 가격 방식으로 낮은 신뢰도). 데이터를 다시 받을 때(`src/collect_*.py`)도 같은 키를 쓴다. `.env.example`을 `.env`로 복사하고 키를 넣는다(환경변수로 줘도 된다). 키는 저장소에 올리지 않는다.
 
 | 변수 | 발급처 | 용도 |
 |---|---|---|
 | `DATA_GO_KR_API_KEY` | 공공데이터포털(data.go.kr) 활용신청 | 연립다세대 매매·전월세 실거래가, 건축HUB 건축물대장 |
-| `VWORLD_API_KEY` | 브이월드(vworld.kr) 인증키 발급 | 공동주택가격(호별 공시가격), 지오코더(실시간 조회만, 저장하지 않음) |
-| `KAKAO_REST_API_KEY` | Kakao Developers 앱 → 플랫폼 키 → REST API 키 | 예측 중 입력 주소를 실시간 조회(법정동코드·좌표). 약관상 결과는 저장하지 않음 |
+| `VWORLD_API_KEY` | 브이월드(vworld.kr) 인증키 발급 | 공동주택가격(호별 공시가격), 연속지적도(필지 좌표·공시지가) |
+| `KAKAO_REST_API_KEY` | Kakao Developers 앱 → 플랫폼 키 → REST API 키 | API 응답 확인용(`src/probe_apis.py`)만. 약관상 결과 저장이 금지라 데이터 수집·예측에 쓰지 않음 |
 
 ## 데이터
 
