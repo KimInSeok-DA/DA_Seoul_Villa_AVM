@@ -121,8 +121,9 @@ class TimeIndex:
         d["lr"] = np.log(d["price"] / d["price_public"])
         raw = d.groupby(["sgg_cd", "month"])["lr"].median().unstack(0)
         months = pd.period_range(raw.index.min(), LAST_FULL_MONTH, freq="M")
-        raw = raw.reindex(months).interpolate(limit_direction="both")
-        self.index = raw.rolling(3, min_periods=1).mean()
+        raw = raw.reindex(pd.period_range(raw.index.min(), raw.index.max(), freq="M")).interpolate(limit_direction="both")
+        # 학습 거래가 기준 달보다 일찍 끝나면(상황 T) 마지막 이동평균 값을 평평하게 이어 붙인다
+        self.index = raw.rolling(3, min_periods=1).mean().reindex(months).ffill()
         self.counts = d.groupby(["sgg_cd", "month"]).size().unstack(0).reindex(months).fillna(0).astype(int)
         return self
 
@@ -146,12 +147,16 @@ class TimeIndex:
 # ---------------------------------------------------------------- 기준선 모델
 SHRINK_K = 2  # 같은 건물 사례 n건을 법정동 값 쪽으로 당기는 정도: (n·건물 + k·동)/(n + k)
 MIN_BJD = 20  # 법정동 통계를 쓰는 최소 거래 수
+T_CUTOFF = pd.Timestamp("2025-09-01")  # 시점 밖 검증(상황 T) 학습 마감: 검증 대상 거래(2025-10-07 이후)보다 앞선 달까지
 Z80 = 1.2816  # 80% 구간
 
 
-def _robust(g):
+def _robust(d, lvl, var):
+    """그룹별 중앙값·MAD 기반 표준편차(1.4826 × MAD)·건수 — 그룹마다 함수를 부르지 않고 한 번에 계산"""
+    g = d.groupby(lvl)[var]
     med = g.median()
-    return pd.Series({"med": med, "sd": 1.4826 * (g - med).abs().median(), "n": g.size})
+    dev = (d[var] - d[lvl].map(med)).abs()
+    return pd.DataFrame({"med": med, "sd": 1.4826 * dev.groupby(d[lvl]).median(), "n": g.size().astype(float)})
 
 
 class BaselineModel:
@@ -167,7 +172,7 @@ class BaselineModel:
         self.stats = {}
         for var in ("lr", "lu"):
             d = t.dropna(subset=[var])
-            self.stats[var] = {lvl: d.groupby(lvl)[var].apply(_robust).unstack() for lvl in ("pnu", "bjd_cd", "sgg_cd")}
+            self.stats[var] = {lvl: _robust(d, lvl, var) for lvl in ("pnu", "bjd_cd", "sgg_cd")}
         self.area_by = {lvl: t.groupby(lvl)["area_m2"].median() for lvl in ("pnu", "bjd_cd")}
         self.n_trades = t.groupby("pnu").size()
         return self
@@ -400,7 +405,11 @@ def holdout_targets(trades, test_pnu):
 
 
 def train_set(trades, test_pnu, targets, scenario):
-    """A: 검증 건물 거래 모두 제외 / B: 검증 건물은 대상 거래 이전 거래만 남김"""
+    """A: 검증 건물 거래 모두 제외 / B: 검증 건물은 대상 거래 이전 거래만 남김
+    T: 시점 밖 검증 — 모든 건물에서 T_CUTOFF 이전 거래만 남김(1년 전에 만든 모델로 그다음 1년을 맞히는 상황, 1007_10).
+       시점 지수는 마지막 달 이후를 평평하게 이어 붙이므로 그 사이 시장 변동이 그대로 오차에 들어간다"""
+    if scenario == "T":
+        return trades[trades["deal_date"] < T_CUTOFF]
     if scenario == "A":
         return trades[~trades["pnu"].isin(test_pnu)]
     cutoff = targets.set_index("pnu")["deal_date"]

@@ -1,0 +1,304 @@
+{
+ "기준 커밋(실행 시 HEAD, 작업 트리 변경 포함 가능)": "ab3d32c",
+ "검증 건물": "data/processed/holdout_pnu.csv (632개, 시드 42)",
+ "검증 대상": "건물당 최근 12개월 최근 거래 1건, 입력은 호 없음·면적 있음",
+ "상황": {
+  "A": "검증 건물 거래 모두 제외",
+  "B": "대상 거래 이전 거래만 남김",
+  "T": "모든 건물에서 2025-09-01 이전 거래만(시점 지수는 마지막 달 이후 평평하게 이어 붙임)"
+ },
+ "변수 순서": {
+  "직접": [
+   "log_public_m2",
+   "log_area",
+   "floor",
+   "is_basement",
+   "rel_floor",
+   "is_top_floor",
+   "age",
+   "elevator",
+   "grnd_flr",
+   "log_hhld",
+   "parking_per_hhld",
+   "log_station",
+   "log_land",
+   "lon",
+   "lat",
+   "gangnam",
+   "hwagok"
+  ],
+  "잔차": [
+   "log_public_m2",
+   "log_area",
+   "floor",
+   "is_basement",
+   "rel_floor",
+   "is_top_floor",
+   "age",
+   "elevator",
+   "grnd_flr",
+   "log_hhld",
+   "parking_per_hhld",
+   "log_station",
+   "log_land",
+   "lon",
+   "lat",
+   "gangnam",
+   "hwagok",
+   "b1_ratio",
+   "area_ratio",
+   "area_sd",
+   "b_n",
+   "b_gap",
+   "b_sd"
+  ]
+ },
+ "그리드": {
+  "Ridge": {
+   "ridge__alpha": [
+    0.1,
+    1,
+    10,
+    100
+   ]
+  },
+  "KNN": {
+   "knn__n_neighbors": [
+    5,
+    10,
+    20,
+    40
+   ],
+   "knn__weights": [
+    "uniform",
+    "distance"
+   ]
+  },
+  "RF": {
+   "rf__min_samples_leaf": [
+    2,
+    5,
+    20
+   ],
+   "rf__max_features": [
+    0.33,
+    0.6
+   ]
+  },
+  "XGB": {
+   "xgb__max_depth": [
+    3,
+    5,
+    7,
+    9
+   ],
+   "xgb__n_estimators": [
+    300,
+    800,
+    1500
+   ],
+   "xgb__min_child_weight": [
+    5,
+    20
+   ]
+  }
+ },
+ "교차검증": "학습 세트 안 GroupKFold(5, 그룹=PNU), MAE(log)",
+ "최적 하이퍼파라미터·CV": {
+  "A": {
+   "Ridge-직접": {
+    "params": {
+     "alpha": 0.1
+    },
+    "cv_mae_log": 0.14994891011946082
+   },
+   "Ridge-잔차": {
+    "params": {
+     "alpha": 100
+    },
+    "cv_mae_log": 0.11651812291336246
+   },
+   "KNN-직접": {
+    "params": {
+     "n_neighbors": 20,
+     "weights": "distance"
+    },
+    "cv_mae_log": 0.1591277934097267
+   },
+   "KNN-잔차": {
+    "params": {
+     "n_neighbors": 40,
+     "weights": "distance"
+    },
+    "cv_mae_log": 0.11404616868629289
+   },
+   "RF-직접": {
+    "params": {
+     "max_features": 0.33,
+     "min_samples_leaf": 2
+    },
+    "cv_mae_log": 0.13000006704295597
+   },
+   "RF-잔차": {
+    "params": {
+     "max_features": 0.33,
+     "min_samples_leaf": 5
+    },
+    "cv_mae_log": 0.11050190317626991
+   },
+   "XGB-직접": {
+    "params": {
+     "max_depth": 5,
+     "min_child_weight": 5,
+     "n_estimators": 800
+    },
+    "cv_mae_log": 0.12952575703472458
+   },
+   "XGB-잔차": {
+    "params": {
+     "max_depth": 7,
+     "min_child_weight": 20,
+     "n_estimators": 300
+    },
+    "cv_mae_log": 0.11070731520969979
+   }
+  },
+  "B": {
+   "Ridge-직접": {
+    "params": {
+     "alpha": 0.1
+    },
+    "cv_mae_log": 0.14893692430220795
+   },
+   "Ridge-잔차": {
+    "params": {
+     "alpha": 100
+    },
+    "cv_mae_log": 0.11636509957881876
+   },
+   "KNN-직접": {
+    "params": {
+     "n_neighbors": 20,
+     "weights": "distance"
+    },
+    "cv_mae_log": 0.15729684434630944
+   },
+   "KNN-잔차": {
+    "params": {
+     "n_neighbors": 40,
+     "weights": "distance"
+    },
+    "cv_mae_log": 0.11418729423535956
+   },
+   "RF-직접": {
+    "params": {
+     "max_features": 0.33,
+     "min_samples_leaf": 2
+    },
+    "cv_mae_log": 0.12913699083633806
+   },
+   "RF-잔차": {
+    "params": {
+     "max_features": 0.33,
+     "min_samples_leaf": 5
+    },
+    "cv_mae_log": 0.11089587189196135
+   },
+   "XGB-직접": {
+    "params": {
+     "max_depth": 5,
+     "min_child_weight": 20,
+     "n_estimators": 800
+    },
+    "cv_mae_log": 0.1283014065925009
+   },
+   "XGB-잔차": {
+    "params": {
+     "max_depth": 9,
+     "min_child_weight": 20,
+     "n_estimators": 300
+    },
+    "cv_mae_log": 0.11084192416934838
+   }
+  },
+  "T": {
+   "Ridge-직접": {
+    "params": {
+     "alpha": 0.1
+    },
+    "cv_mae_log": 0.1451127340885885
+   },
+   "Ridge-잔차": {
+    "params": {
+     "alpha": 100
+    },
+    "cv_mae_log": 0.11011377562173655
+   },
+   "KNN-직접": {
+    "params": {
+     "n_neighbors": 20,
+     "weights": "distance"
+    },
+    "cv_mae_log": 0.152691245474507
+   },
+   "KNN-잔차": {
+    "params": {
+     "n_neighbors": 40,
+     "weights": "distance"
+    },
+    "cv_mae_log": 0.10784572718742383
+   },
+   "RF-직접": {
+    "params": {
+     "max_features": 0.33,
+     "min_samples_leaf": 5
+    },
+    "cv_mae_log": 0.12388671637643763
+   },
+   "RF-잔차": {
+    "params": {
+     "max_features": 0.33,
+     "min_samples_leaf": 5
+    },
+    "cv_mae_log": 0.10529836060212397
+   },
+   "XGB-직접": {
+    "params": {
+     "max_depth": 5,
+     "min_child_weight": 5,
+     "n_estimators": 800
+    },
+    "cv_mae_log": 0.12359976159779511
+   },
+   "XGB-잔차": {
+    "params": {
+     "max_depth": 7,
+     "min_child_weight": 20,
+     "n_estimators": 300
+    },
+    "cv_mae_log": 0.10570773695638387
+   }
+  }
+ },
+ "고정 하이퍼파라미터": {
+  "XGB": {
+   "tree_method": "hist",
+   "learning_rate": 0.03,
+   "subsample": 0.8,
+   "colsample_bytree": 0.8,
+   "random_state": 42
+  },
+  "RF": {
+   "n_estimators": 200,
+   "random_state": 42
+  },
+  "Ridge·KNN": "결측 중앙값 채움(Ridge는 결측 표시 변수 추가) → 표준화"
+ },
+ "라이브러리": {
+  "xgboost": "3.4.1",
+  "scikit-learn": "1.9.1",
+  "pandas": "3.0.6",
+  "numpy": "2.5.3",
+  "python": "3.14.5"
+ }
+}
