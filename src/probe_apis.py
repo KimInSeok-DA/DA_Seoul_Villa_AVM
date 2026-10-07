@@ -3,6 +3,7 @@
 
 사용: python src/probe_apis.py ["서울특별시 관악구 봉천동 1597-30"]
 원본 응답은 data/raw/probe/에 저장한다. 키는 출력하지 않는다.
+단 Kakao 로컬·VWorld 지오코더 응답은 약관상 저장할 수 없어 화면에만 출력한다(의사결정 1006_04 5절).
 """
 import json
 import os
@@ -40,7 +41,6 @@ def main():
     r = requests.get("https://dapi.kakao.com/v2/local/search/address.json",
                      params={"query": address},
                      headers={"Authorization": f"KakaoAK {kakao_key}"}, timeout=15)
-    save("kakao_address.json", r.content)
     show("Kakao 주소검색", r)
     pnu = None
     try:
@@ -57,7 +57,6 @@ def main():
                              "crs": "epsg:4326", "address": address, "refine": "true",
                              "simple": "false", "format": "json", "type": "parcel",
                              "key": vworld_key, "domain": REPO_URL}, timeout=15)
-    save("vworld_geocode.json", r.content)
     show("VWorld 지오코더", r)
 
     if not pnu:

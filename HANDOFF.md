@@ -38,7 +38,7 @@
 | 공동주택가격(공시가격) | VWorld `ned/data/getApartHousingPriceAttr` (`pnu, stdrYear=2026`) | 수집 중. 다세대 포함, 호 단위(`hoNm, floorNm, prvuseAr, pblntfPc`). **같은 행 2번씩 → 중복 제거** |
 | 지오코딩 | Kakao 주소검색 / VWorld getcoord | 동작. Kakao `b_code`·본번·부번으로 입력 주소 → PNU |
 | 법정동코드표 | data.go.kr 15063424 → `data/reference/법정동코드_국토교통부_20260630.csv` | 3개 구 30개 동, 중복 0. 매매·전월세 조인 전후 건수 동일, 미매핑 0 |
-| 지하철역 좌표 | Kakao SW8 (`src/collect_stations.py`) → `data/reference/subway_stations.csv` | 371개(역·노선). 서울교통공사 파일은 9호선 1단계·신림선·수인분당선·신분당선·공항철도 누락이라 대체 |
+| 지하철역 좌표 | 전국도시철도역사정보 표준데이터(2026-06-30, 파일 다운로드 `data/raw/bulk/`) → `src/build_stations.py` → `data/reference/subway_stations.csv` | 367개(역·노선), 275개 역, 24개 노선. Kakao로 만든 이전 파일은 약관(결과 저장 금지) 위반이라 교체 → [1006_04](docs/의사결정/1006_04_수집_범위.md) 5절 |
 
 PNU = 법정동코드(10) + 대지1/산2 + 본번(4) + 부번(4). 예: 봉천동 1597-30 → `1162010100115970030`
 
