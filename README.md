@@ -28,9 +28,10 @@ python predict.py --input input.csv --output output.csv
 | 데이터 | 출처 | 수집 코드 |
 |---|---|---|
 | 연립다세대 매매·전월세 실거래(2020-10~2026-10) | 국토교통부, data.go.kr | `src/collect_trades.py` |
-| 건축물대장 표제부 | 국토교통부 건축HUB, data.go.kr | `src/collect_buildings.py` |
-| 공동주택 공시가격(2026, 호별) | 국토교통부, VWorld | `src/collect_buildings.py` |
+| 건축물대장 표제부 | 국토교통부 건축HUB, data.go.kr | `src/collect_buildings.py` → 정제 `src/build_bld_title.py` |
+| 공동주택 공시가격(호별, 2026년 기준·없는 지번은 2020~2025년 최근 연도로 보충) | 국토교통부, VWorld | `src/collect_buildings.py` → 정제 `src/build_apt_price.py` |
 | 법정동코드 | 국토교통부 전국 법정동(2026-06-30), data.go.kr | 파일 다운로드 → `data/reference/` |
+| 필지 좌표(중심점)·개별공시지가 | 국토교통부 연속지적도, VWorld 데이터 API(data.go.kr 15056910) | `src/collect_parcels.py` |
 | 지하철역 좌표 | 전국도시철도역사정보 표준데이터(2026-06-30), data.go.kr | 파일 다운로드 → `src/build_stations.py` |
 
 `data/raw/`(API 원본)는 용량 때문에 올리지 않는다. 위 스크립트로 다시 받을 수 있다. `predict.py`가 읽는 정제 데이터는 `data/processed/`에 함께 올린다.
@@ -43,7 +44,7 @@ python predict.py --input input.csv --output output.csv
 ├─ notebooks/          탐색·검증 노트북 (NN_주제.ipynb)
 ├─ data/
 │  ├─ raw/             API 원본 응답 (저장소 제외, 다시 받을 수 있음)
-│  ├─ reference/       법정동코드표, 지하철역 좌표
+│  ├─ reference/       법정동코드표, 지하철역 좌표, 필지 좌표·공시지가
 │  └─ processed/       정제 데이터 (저장소에 포함, predict.py가 읽음)
 ├─ outputs/            다시 만들 수 있는 표·그림
 ├─ milestones/         재현이 필요한 시점의 결과·모델 메타데이터 보존

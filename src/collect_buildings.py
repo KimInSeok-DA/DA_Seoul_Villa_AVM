@@ -71,13 +71,18 @@ def get_json(url, params, retries=3):
 
 
 def fetch_title(pnu, key):
-    j = get_json(TITLE_URL, {"serviceKey": key, "sigunguCd": pnu[:5], "bjdongCd": pnu[5:10],
-                             "platGbCd": "0" if pnu[10] == "1" else "1", "bun": pnu[11:15],
-                             "ji": pnu[15:19], "numOfRows": 100, "pageNo": 1, "_type": "json"})
-    code = j.get("response", {}).get("header", {}).get("resultCode")
-    if code not in ("00", "000"):
-        raise RuntimeError(f"건축HUB resultCode={code}: {json.dumps(j, ensure_ascii=False)[:200]}")
-    return j
+    params = {"serviceKey": key, "sigunguCd": pnu[:5], "bjdongCd": pnu[5:10],
+              "platGbCd": "0" if pnu[10] == "1" else "1", "bun": pnu[11:15],
+              "ji": pnu[15:19], "numOfRows": 100, "pageNo": 1, "_type": "json"}
+    # 건축HUB는 간헐적으로 SERVICETIMEOUT_ERROR(서버 연결 실패)를 돌려준다 → 기다렸다가 재시도
+    for wait in (5, 15, 30, None):
+        j = get_json(TITLE_URL, params)
+        code = j.get("response", {}).get("header", {}).get("resultCode")
+        if code in ("00", "000"):
+            return j
+        if "SERVICETIMEOUT" not in json.dumps(j) or wait is None:
+            raise RuntimeError(f"건축HUB resultCode={code}: {json.dumps(j, ensure_ascii=False)[:200]}")
+        time.sleep(wait)
 
 
 def fetch_price(pnu, key):
