@@ -7,8 +7,8 @@
 ## 현재 상태
 
 - 로드맵 대비 반나절 앞섬: 10-07 예정이던 실거래 수집까지 끝남(6년치, 전월세 포함)
-- Git: 저장소 **공개**(사용자, 10-06). 작업은 주제별 브랜치 → PR → 머지(사용자). 머지 완료: #1 수집 설정 `76d6a52` · #2 지하철역 공공데이터 `26f93b3` · #3 정제 `68539ba` · #4 uv 환경 `6eee4f3` · #5 기준선·predict.py 1차 `99739db` · #6 과제 명령 그대로 실행 `53a800e` · #7 구간·신뢰도 보정 `3f52553` · #8 진행 과정 길잡이 `ab3d32c`. 작업 중: `model/ml-compare`(ML 비교 완료, 선정 모델 적용·재보정 남음)
-- `.env`에 키 3개(data.go.kr·VWorld·Kakao). 환경은 uv(`pyproject.toml`·`uv.lock`) + pip용 `requirements.txt`(`uv export`로 생성, 의존성을 바꾸면 다시 생성). Python 3.12 이상 — 3.12·3.13·3.14 새 환경에서 `python predict.py` 규격 통과·출력 동일 확인(3.11은 numpy 2.5가 지원 안 함). xgboost·scikit-learn은 현재 개발 의존성(ML 비교용) — predict.py에 넣을 때 실행 의존성으로 옮기고 requirements 재생성
+- Git: 저장소 **공개**(사용자, 10-06). 작업은 주제별 브랜치 → PR → 머지(사용자). 머지 완료: #1 수집 설정 `76d6a52` · #2 지하철역 공공데이터 `26f93b3` · #3 정제 `68539ba` · #4 uv 환경 `6eee4f3` · #5 기준선·predict.py 1차 `99739db` · #6 과제 명령 그대로 실행 `53a800e` · #7 구간·신뢰도 보정 `3f52553` · #8 진행 과정 길잡이 `ab3d32c`. 작업 중: `model/ml-compare`(ML 비교 + 선정 모델 적용·재보정, PR 대기)
+- `.env`에 키 3개(data.go.kr·VWorld·Kakao). 환경은 uv(`pyproject.toml`·`uv.lock`) + pip용 `requirements.txt`(`uv export`로 생성, 의존성을 바꾸면 다시 생성). Python 3.12 이상 — 3.12·3.13·3.14 새 환경에서 `python predict.py` 규격 통과·출력 동일 확인(3.11은 numpy 2.5가 지원 안 함). xgboost·scikit-learn은 실행 의존성(predict.py가 XGBoost 보정을 씀)
 - 건물 정보 수집·정제 완료: `data/processed/apt_price.csv`(공시가격), `data/processed/bld_title.csv`(표제부)
 
 ## 다음 작업
@@ -17,7 +17,7 @@
 2. ~~기준선 + predict.py 1차~~ → [1007_08](docs/의사결정/1007_08_기준선_모델.md). B1(공시가격 × 시점 보정 비율) 중앙값 APE 11.7%(처음 보는 건물)·11.1%(같은 건물 과거 거래 있음), 표본 20건 규격 통과
 3. ~~구간·신뢰도 보정~~ → [1007_09](docs/의사결정/1007_09_구간_신뢰도_보정.md). 최종 검증 건물에서 80% 구간 포함률 60~65% → 80~83%, 신뢰도 = 비슷한 조건의 ±20% 적중률(공시비율 추정 0.53~0.79, 실제 적중률과 일치. 공시가격 없는 ㎡단가 추정은 0.10). 추정 방식이 바뀌면 `python src/build_calibration.py`로 다시 만든다
 4. ~~ML 비교~~ → [1007_10](docs/의사결정/1007_10_ML_비교.md). Ridge·KNN·RF·XGB × 직접/잔차/평균 13개 후보를 상황 A·B·T(시점 밖)에서 비교 → **XGB-평균** 선정(±20% 적중 A 75.5%·B 78.6%·T 74.8%, B1 대비 +2~5%p 유의). 결과는 `outputs/ml_*.csv`·`milestones/ml_compare/`에 고정, 노트북 03은 CSV만 읽음(재실험은 `src/run_ml_compare.py` 약 85분)
-5. **선정 모델 적용·재보정**(같은 브랜치 두 번째 커밋): predict.py에 XGB 직접·잔차(하이퍼파라미터 고정, 실행할 때 전체 거래로 학습) → 기하평균, `basis` 문구, `python src/build_calibration.py`로 구간·신뢰도 재보정, xgboost·scikit-learn을 실행 의존성으로 옮기고 `requirements.txt` 재생성, 실행 시간·규격 점검
+5. ~~선정 모델 적용·재보정~~ → [1007_10 §7](docs/의사결정/1007_10_ML_비교.md), [1007_09 §5](docs/의사결정/1007_09_구간_신뢰도_보정.md). predict.py 20건 약 25초, 80% 구간 포함률 79~83%(구간은 좁아짐), 신뢰도 0.49~0.87. 모델·변수가 바뀌면 `python src/build_calibration.py`(약 13분)
 6. 오차 큰 사례 분석, 강남 개선
 7. EDA 노트북(시세 요인 그래프, PPT용)
 8. README 완성, 회고 정리, PPT·PDF, 제출 점검

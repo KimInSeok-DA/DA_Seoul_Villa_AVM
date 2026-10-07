@@ -212,17 +212,19 @@ class BaselineModel:
         penalty = {"면적 추정": 0.15, "공시가격 근사(같은 층 다른 면적)": 0.10, "호 불일치(층·면적으로 대체)": 0.05,
                    "위치 정보 없음": 0.05}
         conf = base_conf - sum(penalty.get(f.split("(")[0] if f.startswith("면적 추정") else f, 0) for f in flags)
+        basis_core = basis
         if flags:
             basis += ", " + ", ".join(flags)
         est = float(np.exp(log_est))
-        return {"price_est": est, "price_low": float(np.exp(log_est - Z80 * sd)), "price_high": float(np.exp(log_est + Z80 * sd)),
+        return {"basis_core": basis_core, "price_est": est, "price_low": float(np.exp(log_est - Z80 * sd)), "price_high": float(np.exp(log_est + Z80 * sd)),
                 "confidence": float(np.clip(conf, 0.05, 0.95)), "basis": basis, "method": method, "tier": tier, "n": n,
                 "area_tier": area_tier, "price_public": price_public if use_ratio else np.nan, **diag}
 
 
 # ---------------------------------------------------------------- 구간·신뢰도 보정(1007_09)
 CALIB_PATH = PROC / "calibration.json"
-ERR_FEATURES = ["const", "gangnam", "hwagok", "log_area", "same", "log_n", "b_sd", "b_gap", "area_sd", "area_blank"]
+ERR_FEATURES = ["const", "gangnam", "hwagok", "log_area", "same", "log_n", "b_sd", "b_gap", "area_sd", "area_blank",
+                "ml_gap", "ml_shift"]
 UNIT_PRICE_CONF = 0.10  # ㎡단가 추정: 보정 표본 20건 중 ±20% 적중 2건(10%), 최종 검증 4건 중 0건
 UNTESTED_PENALTY = {"호 불일치(층·면적으로 대체)": 0.05, "공시가격 근사(같은 층 다른 면적)": 0.10, "위치 정보 없음": 0.05}
 
@@ -231,6 +233,11 @@ def error_features(pred):
     """예측 결과(dict 목록 또는 표) → 오차 점수 변수. 모두 예측 시점에 알 수 있는 값이다"""
     d = pd.DataFrame(pred) if not isinstance(pred, pd.DataFrame) else pred
     same = (d["tier"] == "같은 건물").astype(float)
+    if "price_ml_direct" in d:  # ML 보정(1007_10)이 있으면 두 모델의 차이와 B1에서 옮겨 간 정도
+        ml_gap = np.abs(np.log(d["price_ml_direct"] / d["price_ml_resid"])).clip(0, 0.5)
+        ml_shift = np.abs(np.log(d["ml_factor"])).clip(0, 0.5)
+    else:
+        ml_gap = ml_shift = pd.Series(0.0, index=d.index)
     return pd.DataFrame({
         "const": 1.0,
         "gangnam": (d["sgg_cd"] == "11680").astype(float),        # 구 효과(기준: 관악)
@@ -242,6 +249,8 @@ def error_features(pred):
         "b_gap": d["b_gap"].abs().fillna(0).clip(0, 0.5),          # 같은 건물 비율이 동네와 다른 정도
         "area_sd": d["area_sd"],                                   # 동네(법정동·구) 비율의 흩어짐
         "area_blank": d["flags"].map(lambda f: any(x.startswith("면적 추정") for x in f)).astype(float),
+        "ml_gap": ml_gap,                                          # XGBoost 직접·잔차 추정이 서로 다른 정도
+        "ml_shift": ml_shift,                                      # ML이 B1을 많이 옮길수록 불확실
     }, index=d.index)[ERR_FEATURES]
 
 
@@ -349,9 +358,10 @@ def lookup_public(refs, pnu, floor, ho, area_m2):
     return None, None, None, []
 
 
-def estimate(refs, model, row, use_public=True, calibrator=None):
+def estimate(refs, model, row, use_public=True, calibrator=None, ml=None):
     """입력 1행(dict: sigungu, dong, jibun, floor, ho, area_m2) → 출력 dict.
     use_public=False면 공시가격을 쓰지 않는 비교용 기준선(㎡당 단가 × 면적).
+    ml(ml.MLModel)이 있으면 B1 추정을 XGBoost로 보정(1007_10, 최종 모델)
     calibrator가 있으면 구간·신뢰도를 검증 오차로 보정(1007_09), 없으면 근거 수준 규칙(1007_08)"""
     pnu, bjd, sgg = parse_address(refs, row.get("sigungu"), row.get("dong"), row.get("jibun"))
     floor = parse_floor(row.get("floor"))
@@ -380,6 +390,8 @@ def estimate(refs, model, row, use_public=True, calibrator=None):
         flags.append("위치 정보 없음")
     out = model.predict(pnu, bjd, sgg, area, pp, p_year, flags)
     out.update({"pnu": pnu, "sgg_cd": sgg, "area_used": area, "flags": flags})
+    if ml is not None:
+        out = ml.apply(out, bjd, floor)
     return calibrator.apply(out) if calibrator is not None else out
 
 
@@ -426,21 +438,26 @@ def evaluate(pred):
                       "±20%": (ape <= 0.2).mean(), "80%구간포함률": inside.mean()})
 
 
-def run_holdout(refs, scenario, use_public=True, test_pnu=None, area_blank=False, calibrator=None, trades=None):
+def run_holdout(refs, scenario, use_public=True, test_pnu=None, area_blank=False, calibrator=None, trades=None, ml=False):
     """검증 건물의 대상 거래를 입력처럼(호 없음, 면적 있음 — area_blank면 면적도 비움) 넣어 추정 → 예측표.
-    area_blank에 (False, True)를 주면 모델을 한 번만 맞추고 두 경우를 함께 낸다"""
+    area_blank에 (False, True)를 주면 모델을 한 번만 맞추고 두 경우를 함께 낸다.
+    ml=True면 같은 학습 세트로 최종 모델(B1 + XGBoost 보정, 1007_10)을 맞춰 쓴다"""
     tr = refs.trades if trades is None else trades
     test_pnu = holdout_split(tr) if test_pnu is None else test_pnu
     targets = holdout_targets(tr, test_pnu)
     train = train_set(tr, test_pnu, targets, scenario)
     ti = TimeIndex().fit(train)
     model = BaselineModel().fit(train, ti)
+    mlm = None
+    if ml:
+        from ml import MLModel  # 순환 import 방지(ml이 avm을 불러옴)
+        mlm = MLModel().fit(train, ti, refs, model)
     rows = []
     for blank in (area_blank if isinstance(area_blank, tuple) else (area_blank,)):
         for r in targets.itertuples():
             o = estimate(refs, model, {"sigungu": "서울특별시 " + SGG_NAME[r.sgg_cd], "dong": r.dong, "jibun": r.jibun,
                                        "floor": r.floor, "ho": None, "area_m2": None if blank else r.area_m2},
-                         use_public=use_public, calibrator=calibrator)
+                         use_public=use_public, calibrator=calibrator, ml=mlm)
             o.update({"pnu": r.pnu, "sgg_cd": r.sgg_cd, "dong": r.dong, "scenario": scenario, "area_blank": blank,
                       "true_area": r.area_m2, "deal_date": r.deal_date, "price": r.price,
                       "actual": r.price * np.exp(ti.adjust(np.array([r.sgg_cd]), pd.Series([r.deal_date]))[0])})
@@ -451,7 +468,7 @@ def run_holdout(refs, scenario, use_public=True, test_pnu=None, area_blank=False
     return p
 
 
-def calibration_preds(refs, test_pnu, n_folds=5, seed=7):
+def calibration_preds(refs, test_pnu, n_folds=5, seed=7, ml=True):
     """구간·신뢰도 보정용 예측(1007_09). 검증 건물(test_pnu)은 거래까지 모두 빼고, 나머지 후보 건물을 n_folds로 나눠
     폴드마다 그 건물들을 검증 건물처럼 다룬다(A·B 상황 × 면적 있음·비움). 최종 검증(holdout_pnu)은 보정에 쓰지 않는다"""
     tr = refs.trades
@@ -462,6 +479,6 @@ def calibration_preds(refs, test_pnu, n_folds=5, seed=7):
     for k in range(n_folds):
         cp = pd.Series(pool[fold == k], name="pnu")
         for sc in "AB":
-            p = run_holdout(refs, sc, test_pnu=cp, area_blank=(False, True), trades=base)
+            p = run_holdout(refs, sc, test_pnu=cp, area_blank=(False, True), trades=base, ml=ml)
             out.append(p.assign(fold=k))
     return pd.concat(out, ignore_index=True)

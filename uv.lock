@@ -1875,6 +1875,8 @@ dependencies = [
     { name = "pandas" },
     { name = "python-dotenv" },
     { name = "requests" },
+    { name = "scikit-learn" },
+    { name = "xgboost" },
 ]
 
 [package.dev-dependencies]
@@ -1883,8 +1885,6 @@ dev = [
     { name = "matplotlib" },
     { name = "nbconvert" },
     { name = "nbformat" },
-    { name = "scikit-learn" },
-    { name = "xgboost" },
 ]
 
 [package.metadata]
@@ -1894,6 +1894,8 @@ requires-dist = [
     { name = "pandas", specifier = ">=3.0.6" },
     { name = "python-dotenv", specifier = ">=1.2.4" },
     { name = "requests", specifier = ">=2.34.2" },
+    { name = "scikit-learn", specifier = ">=1.9.1" },
+    { name = "xgboost", specifier = ">=3.4.1" },
 ]
 
 [package.metadata.requires-dev]
@@ -1902,8 +1904,6 @@ dev = [
     { name = "matplotlib", specifier = ">=3.11.2" },
     { name = "nbconvert", specifier = ">=7.17.1" },
     { name = "nbformat", specifier = ">=5.11.1" },
-    { name = "scikit-learn", specifier = ">=1.9.1" },
-    { name = "xgboost", specifier = ">=3.4.1" },
 ]
 
 [[package]]

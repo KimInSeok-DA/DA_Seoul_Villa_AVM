@@ -1,4 +1,5 @@
 """ML 비교(1007_10): B1(공시비율) 대 ML 4계열(Ridge·KNN·랜덤포레스트·XGBoost) × 2방식(직접 / B1 잔차 보정)
+최종 모델(MLModel): XGB-평균 = √(XGBoost 직접 추정 × B1 × exp(XGBoost 잔차))
 
 누수 방지 원칙
 - 학습 행의 B1 근거는 예측 때와 같은 조건으로 만든다
@@ -7,6 +8,8 @@
 - 교차검증·그리드서치는 학습 세트 안에서 건물 단위 GroupKFold로만 한다. 최종 홀드아웃(632개 건물)은 마지막 비교에만 쓴다
 - 시점 지수는 학습 세트로 맞춘다(한 거래가 구·월 중앙값에 미치는 영향은 무시할 만함 — 한계로 기록)
 """
+import math
+
 import numpy as np
 import pandas as pd
 from sklearn.compose import ColumnTransformer
@@ -161,3 +164,45 @@ def grid_search(family, X, y, groups, features, n_folds=5):
                       scoring="neg_mean_absolute_error", n_jobs=1)
     gs.fit(X[m], y[m], groups=groups[m])
     return gs
+
+
+# ---------------------------------------------------------------- 최종 모델(1007_10 결정)
+# 하이퍼파라미터: 상황 B(실제 입력에 가장 가까움) 그리드서치 최적값. 학습률 0.03은 make_pipeline에서 고정
+FINAL_PARAMS = {"직접": {"max_depth": 5, "n_estimators": 800, "min_child_weight": 20},
+                "잔차": {"max_depth": 9, "n_estimators": 300, "min_child_weight": 20}}
+
+
+class MLModel:
+    """B1 추정을 XGBoost 두 모델로 보정한다. 학습 거래·시점 지수·B1 모델(BaselineModel)은 B1과 같은 것을 쓴다
+    - 직접: 건물·입지 변수로 log 기준일 ㎡당 가격
+    - 잔차: 같은 변수 + B1 근거로 log(실거래 ÷ B1) → B1 × exp(예측). 공시가격이 없으면(㎡단가 추정) B1 그대로
+    - 최종 = 두 값의 기하평균"""
+
+    def fit(self, trades, time_index, refs, base):
+        self.refs, self.base = refs, base
+        self.bld = load_buildings(refs.trades)
+        X, ys, _ = training_table(trades, time_index, refs, self.bld)
+        self.models = {}
+        for way, y in ys.items():
+            ok = ~np.isnan(y)
+            self.models[way] = make_pipeline("XGB", FEATURES[way], **FINAL_PARAMS[way]).fit(X[ok], y[ok])
+        return self
+
+    def apply(self, out, bjd, floor):
+        """estimate()의 B1 결과 1건 → 추정값을 보정하고 근거를 덧붙인다(구간은 같은 배율로 옮긴 뒤 보정표가 다시 정함)"""
+        q = pd.DataFrame({"pnu": [out["pnu"]], "bjd_cd": [bjd], "sgg_cd": [out["sgg_cd"]], "floor": [floor],
+                          "area_m2": [out["area_used"]], "price_public": [out["price_public"]]})
+        X = pd.concat([hedonic_features(q, self.refs, self.bld), query_b1_features(q, self.base)], axis=1)
+        b1 = out["price_est"]
+        direct = float(np.exp(self.models["직접"].predict(X)[0])) * out["area_used"]
+        resid = b1 * float(np.exp(self.models["잔차"].predict(X)[0])) if out["method"] == "공시비율" else b1
+        est = math.sqrt(direct * resid)
+        f = est / b1
+        out.update(price_b1=b1, price_ml_direct=direct, price_ml_resid=resid, ml_factor=f, price_est=est,
+                   price_low=out["price_low"] * f, price_high=out["price_high"] * f)
+        src = f"XGBoost 잔차 {resid / 1e8:.2f}억" if out["method"] == "공시비율" else "㎡단가 추정"
+        out["basis"] = (f"{out['basis_core']} = {b1 / 1e8:.2f}억, 건물·입지 보정 ×{f:.2f}"
+                        f"({src}·XGBoost 직접 {direct / 1e8:.2f}억 평균)")
+        if out["flags"]:
+            out["basis"] += ", " + ", ".join(out["flags"])
+        return out

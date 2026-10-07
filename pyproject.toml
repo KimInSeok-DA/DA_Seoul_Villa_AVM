@@ -8,6 +8,8 @@ dependencies = [
     "pandas>=3.0.6",
     "python-dotenv>=1.2.4",
     "requests>=2.34.2",
+    "scikit-learn>=1.9.1",
+    "xgboost>=3.4.1",
 ]
 
 [dependency-groups]
@@ -16,6 +18,4 @@ dev = [
     "matplotlib>=3.11.2",
     "nbconvert>=7.17.1",
     "nbformat>=5.11.1",
-    "scikit-learn>=1.9.1",
-    "xgboost>=3.4.1",
 ]
