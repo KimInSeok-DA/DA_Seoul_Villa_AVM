@@ -2,7 +2,7 @@
 
 서울 강서구 화곡동·강남구·관악구의 다세대·연립주택에 대해 **지번 + 층 + 호**를 넣으면 매매 시세(추정값·하한·상한·신뢰도·근거)를 내는 모델.
 
-> 작업 중. 설치 방법과 `predict.py`는 구현이 끝나면 채운다. 현재 진행 상황은 [`HANDOFF.md`](HANDOFF.md).
+> 작업 중. `predict.py` 1차(기준선) 동작. 현재 진행 상황은 [`HANDOFF.md`](HANDOFF.md).
 
 ## 설치
 
@@ -20,10 +20,13 @@ uv run python predict.py --input input.csv --output output.csv
 
 - 입력 컬럼: `id, sigungu, dong, jibun, floor, ho, area_m2` (`ho`, `area_m2`는 비어 있을 수 있음)
 - 출력 컬럼: `id, price_est, price_low, price_high, confidence, basis, status`
+- 외부 API를 부르지 않는다. 실행할 때 저장소의 정제 데이터로 모델을 다시 맞춘다(20건 약 20초)
+- 규격 검사: `uv run python tests/check_output.py --input tests/sample_input.csv --output output.csv --expect-ok`
+- 예외 입력 예시: `tests/edge_input.csv`(권역 밖, 주소 해석 불가, 지하 표기, 면적 없음 등)
 
 ## 환경 변수
 
-`.env.example`을 `.env`로 복사하고 키를 넣는다. 키는 저장소에 올리지 않는다.
+**`predict.py` 실행에는 키가 필요 없다**(필요한 데이터를 미리 받아 저장소에 넣어 둠). 아래 키는 `src/collect_*.py`로 데이터를 다시 받을 때만 쓴다. `.env.example`을 `.env`로 복사하고 키를 넣는다. 키는 저장소에 올리지 않는다.
 
 | 변수 | 발급처 | 용도 |
 |---|---|---|
@@ -47,9 +50,10 @@ uv run python predict.py --input input.csv --output output.csv
 ## 폴더 구조
 
 ```text
-├─ predict.py          실행 진입점 (예정)
-├─ src/                수집·정제·모델 코드
-├─ notebooks/          탐색·검증 노트북 (NN_주제.ipynb)
+├─ predict.py          실행 진입점
+├─ src/                수집·정제 코드, avm.py(모델·검증 공용)
+├─ tests/              입력 표본, 출력 규격 검사
+├─ notebooks/          검증·분석 노트북 (NN_주제.ipynb, make_NN_*.py가 생성)
 ├─ data/
 │  ├─ raw/             API 원본 응답 (저장소 제외, 다시 받을 수 있음)
 │  ├─ reference/       법정동코드표, 지하철역 좌표, 필지 좌표·공시지가
