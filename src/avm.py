@@ -19,7 +19,7 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
-from build_apt_price import ho_key as normalize_ho  # noqa: E402
+from ho import ho_key as normalize_ho  # noqa: E402  표준 라이브러리만 쓰는 호 표기 규칙
 
 PROC = ROOT / "data" / "processed"
 REF = ROOT / "data" / "reference"

@@ -6,16 +6,27 @@
 
 ## 설치
 
-[uv](https://docs.astral.sh/uv/)로 환경을 만든다(Python 3.14).
+Python 3.12 이상(3.12·3.13·3.14에서 같은 결과 확인). 둘 중 하나로 설치한다.
 
+**pip**
+```bash
+python -m venv .venv
+.venv\Scripts\activate          # macOS·Linux: source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+**uv**
 ```bash
 uv sync
+.venv\Scripts\activate          # macOS·Linux: source .venv/bin/activate
 ```
 
 ## 실행
 
+가상환경을 켠 상태에서 과제 명령 그대로 실행한다(`uv run python predict.py ...`도 같다).
+
 ```bash
-uv run python predict.py --input input.csv --output output.csv
+python predict.py --input input.csv --output output.csv
 ```
 
 - 입력 컬럼: `id, sigungu, dong, jibun, floor, ho, area_m2` (`ho`, `area_m2`는 비어 있을 수 있음)
