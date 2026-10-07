@@ -25,6 +25,7 @@ PROC = ROOT / "data" / "processed"
 REF = ROOT / "data" / "reference"
 BASE_DATE = pd.Timestamp("2026-10-06")  # 산출 기준일
 LAST_FULL_MONTH = pd.Period("2026-08", "M")  # 09·10월은 신고기한 전이라 덜 들어옴(1007_05)
+TRAIN_YEARS = 3  # 학습·비교사례에 쓰는 거래 기간(기준일부터 3년). 3·5·6년 검증 비교로 결정(1007_13)
 SGG = {"강서구": "11500", "관악구": "11620", "강남구": "11680"}
 SGG_NAME = {v: k for k, v in SGG.items()}
 
@@ -53,6 +54,7 @@ def load_refs():
     ap = ap[ap["stdr_year"] == ap.groupby("pnu")["stdr_year"].transform("max")]  # 지번별 최신 공시 연도만
     trades = pd.read_csv(PROC / "trades.csv", dtype={"pnu": str, "bjd_cd": str, "sgg_cd": str},
                          parse_dates=["deal_date"], low_memory=False)
+    trades = trades[trades["deal_date"] >= BASE_DATE - pd.DateOffset(years=TRAIN_YEARS)].reset_index(drop=True)
     refs = Refs(codes[["sgg_cd", "bjd_cd", "dong"]], parcels, stations, ap, trades)
     refs.ap_by_pnu = dict(tuple(ap.groupby("pnu")))  # 입력마다 전체를 훑지 않게 지번별로 미리 나눔
     return refs
@@ -224,7 +226,8 @@ class BaselineModel:
 # ---------------------------------------------------------------- 구간·신뢰도 보정(1007_09)
 CALIB_PATH = PROC / "calibration.json"
 ERR_FEATURES = ["const", "gangnam", "hwagok", "log_area", "same", "log_n", "b_sd", "b_gap", "area_sd", "area_blank",
-                "ml_gap", "ml_shift"]
+                "ml_gap", "ml_shift", "basement", "old"]
+OLD_AGE = 30  # 오차 분석(1007_13): 지하층·30년 초과 건물은 ±20% 적중률이 낮은데 신뢰도에 반영되지 않았음
 UNIT_PRICE_CONF = 0.10  # ㎡단가 추정: 보정 표본 20건 중 ±20% 적중 2건(10%), 최종 검증 4건 중 0건
 UNTESTED_PENALTY = {"호 불일치(층·면적으로 대체)": 0.05, "공시가격 근사(같은 층 다른 면적)": 0.10, "위치 정보 없음": 0.05}
 
@@ -238,6 +241,8 @@ def error_features(pred):
         ml_shift = np.abs(np.log(d["ml_factor"])).clip(0, 0.5)
     else:
         ml_gap = ml_shift = pd.Series(0.0, index=d.index)
+    floor = d["floor"] if "floor" in d else pd.Series(0, index=d.index)
+    age = d["age"] if "age" in d else pd.Series(np.nan, index=d.index)
     return pd.DataFrame({
         "const": 1.0,
         "gangnam": (d["sgg_cd"] == "11680").astype(float),        # 구 효과(기준: 관악)
@@ -251,6 +256,8 @@ def error_features(pred):
         "area_blank": d["flags"].map(lambda f: any(x.startswith("면적 추정") for x in f)).astype(float),
         "ml_gap": ml_gap,                                          # XGBoost 직접·잔차 추정이 서로 다른 정도
         "ml_shift": ml_shift,                                      # ML이 B1을 많이 옮길수록 불확실
+        "basement": (floor.astype(float) < 0).astype(float),       # 지하층(보정 표본 ±20% 적중 59% vs 지상 74%)
+        "old": (age.astype(float) > OLD_AGE).astype(float),        # 30년 초과(67% vs 75%)
     }, index=d.index)[ERR_FEATURES]
 
 
@@ -390,7 +397,7 @@ def estimate(refs, model, row, use_public=True, calibrator=None, ml=None, live=N
     if pnu not in refs.parcels.index:
         flags.append("위치 정보 없음")
     out = model.predict(pnu, bjd, sgg, area, pp, p_year, flags)
-    out.update({"pnu": pnu, "sgg_cd": sgg, "area_used": area, "flags": flags})
+    out.update({"pnu": pnu, "sgg_cd": sgg, "area_used": area, "flags": flags, "floor": floor})
     if ml is not None:
         out = ml.apply(out, bjd, floor)
     return calibrator.apply(out) if calibrator is not None else out
