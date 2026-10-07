@@ -4,10 +4,18 @@
 
 > 작업 중. 설치 방법과 `predict.py`는 구현이 끝나면 채운다. 현재 진행 상황은 [`HANDOFF.md`](HANDOFF.md).
 
+## 설치
+
+[uv](https://docs.astral.sh/uv/)로 환경을 만든다(Python 3.14).
+
+```bash
+uv sync
+```
+
 ## 실행
 
 ```bash
-python predict.py --input input.csv --output output.csv
+uv run python predict.py --input input.csv --output output.csv
 ```
 
 - 입력 컬럼: `id, sigungu, dong, jibun, floor, ho, area_m2` (`ho`, `area_m2`는 비어 있을 수 있음)
