@@ -39,13 +39,22 @@ GRIDS = {
 
 
 # ---------------------------------------------------------------- 건물·위치 변수
+MAX_PARKING_PER_HHLD = 3  # 세대당 주차 3대 초과는 단지 전체·근생 주차가 섞인 값으로 보고 결측(1007_11)
+
+
 def load_buildings(trades):
-    """지번별 건물 정보. 연식 기준 연도는 표제부 대표 동 사용승인 연도, 없으면 그 지번 거래의 건축년도 중앙값"""
+    """지번별 건물 정보(1007_11 점검 반영)
+    - 연식 기준 연도: 표제부 대표 동 사용승인일(YYYYMMDD, 일부 YYYYMM)의 연도, 없으면 그 지번 거래의 건축년도 중앙값
+    - 세대수 0(대표 동이 근린생활시설·단독주택 등)·지상층수 0은 값이 아니라 모름 → 결측
+    - 세대당 주차가 MAX_PARKING_PER_HHLD를 넘으면 주차 대수 결측"""
     b = pd.read_csv(PROC / "bld_title.csv", dtype={"pnu": str}).set_index("pnu")
-    year = (b["use_apr_date"] // 10000).where(b["use_apr_date"].notna(), b["use_apr_year_max"])
-    year = year.fillna(trades.groupby("pnu")["build_year"].median())
-    return pd.DataFrame({"build_year": year, "elevator": b["elevator"], "grnd_flr": b["grnd_flr"],
-                         "hhld_cnt": b["hhld_cnt"], "parking_cnt": b["parking_cnt"]})
+    d = b["use_apr_date"]
+    year = (d // 10000).where(d >= 1e7, d // 100)  # 6자리(YYYYMM)는 100으로 나눔
+    year = year.fillna(b["use_apr_year_max"]).fillna(trades.groupby("pnu")["build_year"].median())
+    hhld = b["hhld_cnt"].where(b["hhld_cnt"] > 0)
+    parking = b["parking_cnt"].where(~(b["parking_cnt"] / hhld > MAX_PARKING_PER_HHLD))
+    return pd.DataFrame({"build_year": year, "elevator": b["elevator"], "grnd_flr": b["grnd_flr"].where(b["grnd_flr"] > 0),
+                         "hhld_cnt": hhld, "parking_cnt": parking})
 
 
 def hedonic_features(rows, refs, bld):
