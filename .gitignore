@@ -28,3 +28,6 @@ Thumbs.db
 
 # 개인 학습 자료(강의 PDF, 저작권·비공개)
 과제 참고/
+
+# predict.py 실행 결과(테스트용)
+output*.csv
