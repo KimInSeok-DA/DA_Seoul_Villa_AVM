@@ -32,7 +32,8 @@ python predict.py --input input.csv --output output.csv
 - 입력 컬럼: `id, sigungu, dong, jibun, floor, ho, area_m2` (`ho`, `area_m2`는 비어 있을 수 있음)
 - 출력 컬럼: `id, price_est, price_low, price_high, confidence, basis, status`
 - 외부 API를 부르지 않는다. 실행할 때 저장소의 정제 데이터로 모델을 다시 맞춘다(20건 약 20초)
-- 규격 검사: `uv run python tests/check_output.py --input tests/sample_input.csv --output output.csv --expect-ok`
+- `price_low`~`price_high`는 80% 구간, `confidence`는 검증에서 비슷한 조건의 추정이 실거래가 ±20% 안에 든 비율이다. 둘 다 검증 오차로 만든 보정표 `data/processed/calibration.json`(`src/build_calibration.py`)으로 정한다
+- 규격 검사: `python tests/check_output.py --input tests/sample_input.csv --output output.csv --expect-ok`
 - 예외 입력 예시: `tests/edge_input.csv`(권역 밖, 주소 해석 불가, 지하 표기, 면적 없음 등)
 
 ## 환경 변수
@@ -56,7 +57,7 @@ python predict.py --input input.csv --output output.csv
 | 필지 좌표(중심점)·개별공시지가 | 국토교통부 연속지적도, VWorld 데이터 API(data.go.kr 15056910) | `src/collect_parcels.py` |
 | 지하철역 좌표 | 전국도시철도역사정보 표준데이터(2026-06-30), data.go.kr | 파일 다운로드 → `src/build_stations.py` |
 
-`data/raw/`(API 원본)는 용량 때문에 올리지 않는다. 위 스크립트로 다시 받을 수 있다. `predict.py`가 읽는 정제 데이터는 `data/processed/`에 함께 올린다.
+`data/raw/`(API 원본)는 용량 때문에 올리지 않는다. 위 스크립트로 다시 받을 수 있다. `predict.py`가 읽는 정제 데이터는 `data/processed/`에 함께 올린다(구간·신뢰도 보정표 `calibration.json`은 `src/build_calibration.py`가 정제 데이터로 만든다).
 
 ## 폴더 구조
 

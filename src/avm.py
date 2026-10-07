@@ -177,25 +177,27 @@ class BaselineModel:
         dong = s["bjd_cd"].loc[bjd] if bjd in s["bjd_cd"].index and s["bjd_cd"].loc[bjd, "n"] >= MIN_BJD else None
         area = dong if dong is not None else s["sgg_cd"].loc[sgg]
         area_tier = "법정동" if dong is not None else "구"
+        diag = {"area_sd": float(area["sd"]), "b_sd": np.nan, "b_gap": np.nan}
         if pnu in s["pnu"].index:
             b = s["pnu"].loc[pnu]
             n = int(b["n"])
             med = (n * b["med"] + SHRINK_K * area["med"]) / (n + SHRINK_K)
-            return med, area["sd"] * 0.8, "같은 건물", n, area_tier
-        return area["med"], area["sd"], area_tier, int(area["n"]), area_tier
+            diag.update(b_sd=float(b["sd"]), b_gap=float(b["med"] - area["med"]))
+            return med, area["sd"] * 0.8, "같은 건물", n, area_tier, diag
+        return area["med"], area["sd"], area_tier, int(area["n"]), area_tier, diag
 
     def predict(self, pnu, bjd, sgg, area_m2, price_public=None, public_year=None, flags=()):
         flags = list(flags)
         use_ratio = price_public is not None and not pd.isna(price_public) and public_year == 2026
         if use_ratio:
-            med, sd, tier, n, area_tier = self._level("lr", pnu, bjd, sgg)
+            med, sd, tier, n, area_tier, diag = self._level("lr", pnu, bjd, sgg)
             log_est = np.log(price_public) + med
             ratio = float(np.exp(med))
             basis = (f"공시가격 {price_public / 1e8:.2f}억 × 실거래/공시 비율 {ratio:.2f}"
                      f"({tier}{f' {n}건+' + area_tier if tier == '같은 건물' else f' {n}건'}, 기준일 시점보정)")
             method = "공시비율"
         else:
-            med, sd, tier, n, area_tier = self._level("lu", pnu, bjd, sgg)
+            med, sd, tier, n, area_tier, diag = self._level("lu", pnu, bjd, sgg)
             log_est = med + np.log(area_m2)
             basis = (f"㎡당 {np.exp(med) / 1e4:,.0f}만원({tier}{f' {n}건+' + area_tier if tier == '같은 건물' else f' {n}건'}"
                      f", 기준일 시점보정) × {area_m2:g}㎡")
@@ -209,7 +211,107 @@ class BaselineModel:
             basis += ", " + ", ".join(flags)
         est = float(np.exp(log_est))
         return {"price_est": est, "price_low": float(np.exp(log_est - Z80 * sd)), "price_high": float(np.exp(log_est + Z80 * sd)),
-                "confidence": float(np.clip(conf, 0.05, 0.95)), "basis": basis, "method": method, "tier": tier, "n": n}
+                "confidence": float(np.clip(conf, 0.05, 0.95)), "basis": basis, "method": method, "tier": tier, "n": n,
+                "area_tier": area_tier, "price_public": price_public if use_ratio else np.nan, **diag}
+
+
+# ---------------------------------------------------------------- 구간·신뢰도 보정(1007_09)
+CALIB_PATH = PROC / "calibration.json"
+ERR_FEATURES = ["const", "gangnam", "hwagok", "log_area", "same", "log_n", "b_sd", "b_gap", "area_sd", "area_blank"]
+UNIT_PRICE_CONF = 0.10  # ㎡단가 추정: 보정 표본 20건 중 ±20% 적중 2건(10%), 최종 검증 4건 중 0건
+UNTESTED_PENALTY = {"호 불일치(층·면적으로 대체)": 0.05, "공시가격 근사(같은 층 다른 면적)": 0.10, "위치 정보 없음": 0.05}
+
+
+def error_features(pred):
+    """예측 결과(dict 목록 또는 표) → 오차 점수 변수. 모두 예측 시점에 알 수 있는 값이다"""
+    d = pd.DataFrame(pred) if not isinstance(pred, pd.DataFrame) else pred
+    same = (d["tier"] == "같은 건물").astype(float)
+    return pd.DataFrame({
+        "const": 1.0,
+        "gangnam": (d["sgg_cd"] == "11680").astype(float),        # 구 효과(기준: 관악)
+        "hwagok": (d["sgg_cd"] == "11500").astype(float),
+        "log_area": np.log(d["area_used"].astype(float)),          # 소형일수록 오차가 큼
+        "same": same,                                              # 같은 건물 거래가 근거
+        "log_n": np.log1p(d["n"].where(same == 1, 0)),             # 같은 건물 거래 수
+        "b_sd": d["b_sd"].fillna(0).clip(0, 0.5),                  # 같은 건물 비율의 흩어짐
+        "b_gap": d["b_gap"].abs().fillna(0).clip(0, 0.5),          # 같은 건물 비율이 동네와 다른 정도
+        "area_sd": d["area_sd"],                                   # 동네(법정동·구) 비율의 흩어짐
+        "area_blank": d["flags"].map(lambda f: any(x.startswith("면적 추정") for x in f)).astype(float),
+    }, index=d.index)[ERR_FEATURES]
+
+
+class Calibrator:
+    """공시비율 추정의 80% 구간과 신뢰도를 검증 오차로 정한다.
+    1) 오차 점수 = |log 오차|를 위 변수로 회귀(최소제곱)한 예측값
+    2) 보정 표본을 점수 10분위로 나눠, 분위마다 log 오차의 10·90% 분위수 → 구간, ±20% 적중률 → 신뢰도
+    신뢰도 = '검증에서 비슷한 조건의 추정이 실거래가 ±20% 안에 든 비율'. 점수가 클수록 낮아지게(단조) 맞춘다"""
+
+    def fit(self, pred, n_bins=10, folds=None):
+        p = pred[pred["method"] == "공시비율"].reset_index(drop=True)
+        x, y = error_features(p).to_numpy(), p["log_err"].abs().to_numpy()
+        self.coef = np.linalg.lstsq(x, y, rcond=None)[0]
+        # 분위 경계·통계는 교차 적합(자기 폴드를 뺀 계수)한 점수로 만든다 — 같은 표본으로 계수와 표를 함께 맞추면 낙관적
+        s = np.empty(len(p))
+        folds = p["fold"].to_numpy() if folds is None else folds
+        for k in np.unique(folds):
+            m = folds == k
+            s[m] = x[m] @ np.linalg.lstsq(x[~m], y[~m], rcond=None)[0]
+        edges = np.quantile(s, np.linspace(0, 1, n_bins + 1))[1:-1]
+        b = np.searchsorted(edges, s)
+        e, ape = p["log_err"].to_numpy(), p["ape"].to_numpy()
+        q10 = np.array([np.quantile(e[b == i], 0.1) for i in range(n_bins)])
+        q90 = np.array([np.quantile(e[b == i], 0.9) for i in range(n_bins)])
+        hit = np.array([(ape[b == i] <= 0.2).mean() for i in range(n_bins)])
+        self.edges, self.q10, self.q90 = edges, q10, q90
+        self.conf = _decreasing(hit)
+        self.table = pd.DataFrame({"점수_상한": np.append(edges, np.inf), "n": np.bincount(b, minlength=n_bins),
+                                   "중앙값APE": [np.median(ape[b == i]) for i in range(n_bins)], "±20%적중률": hit,
+                                   "신뢰도": self.conf, "log오차_q10": q10, "log오차_q90": q90})
+        return self
+
+    def save(self, path=CALIB_PATH):
+        import json
+        path.write_text(json.dumps({"features": ERR_FEATURES, "coef": self.coef.tolist(), "edges": self.edges.tolist(),
+                                    "q10": self.q10.tolist(), "q90": self.q90.tolist(), "conf": self.conf.tolist()},
+                                   ensure_ascii=False, indent=1), encoding="utf-8")
+
+    @classmethod
+    def load(cls, path=CALIB_PATH):
+        import json
+        j = json.loads(path.read_text(encoding="utf-8"))
+        assert j["features"] == ERR_FEATURES, "calibration.json 변수 순서가 코드와 다름 — build_calibration.py 다시 실행"
+        c = cls()
+        c.coef, c.edges, c.q10, c.q90, c.conf = (np.array(j[k]) for k in ("coef", "edges", "q10", "q90", "conf"))
+        return c
+
+    def apply(self, out):
+        """estimate() 결과 1건의 구간·신뢰도를 바꾼다.
+        ㎡단가(공시가격 없음)는 표본이 5개 건물뿐이라 구간은 기존 규칙을 두고, 신뢰도는 그 표본의 적중률로 고정한다"""
+        if out["method"] != "공시비율":
+            out["confidence"] = UNIT_PRICE_CONF
+            return out
+        s = float(error_features([out]).to_numpy()[0] @ self.coef)
+        i = int(np.searchsorted(self.edges, s))
+        est = out["price_est"]
+        out["price_low"], out["price_high"] = est * np.exp(-self.q90[i]), est * np.exp(-self.q10[i])
+        conf = self.conf[i] - sum(UNTESTED_PENALTY.get(f, 0) for f in out["flags"])
+        out.update(confidence=float(np.clip(conf, 0.05, 0.95)), err_score=s, err_bin=i)
+        return out
+
+
+def _decreasing(v):
+    """구간별 값을 점수가 커질수록 줄어들게(단조 감소) 맞춘다 — 인접 구간 평균으로 위반을 없애는 방식(isotonic)"""
+    blocks = [[x, 1] for x in v]
+    i = 0
+    while i < len(blocks) - 1:
+        if blocks[i][0] < blocks[i + 1][0]:
+            a, b = blocks[i], blocks.pop(i + 1)
+            a[0] = (a[0] * a[1] + b[0] * b[1]) / (a[1] + b[1])
+            a[1] += b[1]
+            i = max(i - 1, 0)
+        else:
+            i += 1
+    return np.concatenate([[x] * n for x, n in blocks])
 
 
 # ---------------------------------------------------------------- 입력 1건 처리
@@ -242,9 +344,10 @@ def lookup_public(refs, pnu, floor, ho, area_m2):
     return None, None, None, []
 
 
-def estimate(refs, model, row, use_public=True):
+def estimate(refs, model, row, use_public=True, calibrator=None):
     """입력 1행(dict: sigungu, dong, jibun, floor, ho, area_m2) → 출력 dict.
-    use_public=False면 공시가격을 쓰지 않는 비교용 기준선(㎡당 단가 × 면적)"""
+    use_public=False면 공시가격을 쓰지 않는 비교용 기준선(㎡당 단가 × 면적).
+    calibrator가 있으면 구간·신뢰도를 검증 오차로 보정(1007_09), 없으면 근거 수준 규칙(1007_08)"""
     pnu, bjd, sgg = parse_address(refs, row.get("sigungu"), row.get("dong"), row.get("jibun"))
     floor = parse_floor(row.get("floor"))
     ho = str(row.get("ho") or "").strip() or None
@@ -271,16 +374,21 @@ def estimate(refs, model, row, use_public=True):
     if pnu not in refs.parcels.index:
         flags.append("위치 정보 없음")
     out = model.predict(pnu, bjd, sgg, area, pp, p_year, flags)
-    out.update({"pnu": pnu, "area_used": area})
-    return out
+    out.update({"pnu": pnu, "sgg_cd": sgg, "area_used": area, "flags": flags})
+    return calibrator.apply(out) if calibrator is not None else out
 
 
 # ---------------------------------------------------------------- 홀드아웃
-def holdout_split(trades, frac=0.2, seed=42):
-    """최근 12개월 거래가 있는 평가 권역 건물 중 frac을 검증 건물로(1007_07)"""
+def holdout_pool(trades):
+    """최근 12개월 거래가 있는 평가 권역 건물(블라인드 검증 물건의 추출 조건과 같음)"""
     recent = trades[(trades["deal_date"] >= BASE_DATE - pd.DateOffset(months=12) + pd.Timedelta(days=1))
                     & ((trades["sgg_cd"] != "11500") | (trades["dong"] == "화곡동"))]
-    pnus = np.sort(recent["pnu"].unique())
+    return np.sort(recent["pnu"].unique())
+
+
+def holdout_split(trades, frac=0.2, seed=42):
+    """최근 12개월 거래가 있는 평가 권역 건물 중 frac을 검증 건물로(1007_07)"""
+    pnus = holdout_pool(trades)
     rng = np.random.default_rng(seed)
     test = rng.choice(pnus, size=int(round(len(pnus) * frac)), replace=False)
     return pd.Series(np.sort(test), name="pnu")
@@ -309,22 +417,42 @@ def evaluate(pred):
                       "±20%": (ape <= 0.2).mean(), "80%구간포함률": inside.mean()})
 
 
-def run_holdout(refs, scenario, use_public=True, test_pnu=None):
-    """검증 건물의 대상 거래를 입력처럼(호 없음, 면적 있음) 넣어 추정 → 예측표"""
-    tr = refs.trades
+def run_holdout(refs, scenario, use_public=True, test_pnu=None, area_blank=False, calibrator=None, trades=None):
+    """검증 건물의 대상 거래를 입력처럼(호 없음, 면적 있음 — area_blank면 면적도 비움) 넣어 추정 → 예측표.
+    area_blank에 (False, True)를 주면 모델을 한 번만 맞추고 두 경우를 함께 낸다"""
+    tr = refs.trades if trades is None else trades
     test_pnu = holdout_split(tr) if test_pnu is None else test_pnu
     targets = holdout_targets(tr, test_pnu)
     train = train_set(tr, test_pnu, targets, scenario)
     ti = TimeIndex().fit(train)
     model = BaselineModel().fit(train, ti)
     rows = []
-    for r in targets.itertuples():
-        o = estimate(refs, model, {"sigungu": "서울특별시 " + SGG_NAME[r.sgg_cd], "dong": r.dong, "jibun": r.jibun,
-                                   "floor": r.floor, "ho": None, "area_m2": r.area_m2}, use_public=use_public)
-        o.update({"pnu": r.pnu, "sgg_cd": r.sgg_cd, "dong": r.dong, "deal_date": r.deal_date, "price": r.price,
-                  "actual": r.price * np.exp(ti.adjust(np.array([r.sgg_cd]), pd.Series([r.deal_date]))[0])})
-        rows.append(o)
+    for blank in (area_blank if isinstance(area_blank, tuple) else (area_blank,)):
+        for r in targets.itertuples():
+            o = estimate(refs, model, {"sigungu": "서울특별시 " + SGG_NAME[r.sgg_cd], "dong": r.dong, "jibun": r.jibun,
+                                       "floor": r.floor, "ho": None, "area_m2": None if blank else r.area_m2},
+                         use_public=use_public, calibrator=calibrator)
+            o.update({"pnu": r.pnu, "sgg_cd": r.sgg_cd, "dong": r.dong, "scenario": scenario, "area_blank": blank,
+                      "true_area": r.area_m2, "deal_date": r.deal_date, "price": r.price,
+                      "actual": r.price * np.exp(ti.adjust(np.array([r.sgg_cd]), pd.Series([r.deal_date]))[0])})
+            rows.append(o)
     p = pd.DataFrame(rows)
     p["ape"] = (p["price_est"] - p["actual"]).abs() / p["actual"]
     p["log_err"] = np.log(p["price_est"] / p["actual"])
     return p
+
+
+def calibration_preds(refs, test_pnu, n_folds=5, seed=7):
+    """구간·신뢰도 보정용 예측(1007_09). 검증 건물(test_pnu)은 거래까지 모두 빼고, 나머지 후보 건물을 n_folds로 나눠
+    폴드마다 그 건물들을 검증 건물처럼 다룬다(A·B 상황 × 면적 있음·비움). 최종 검증(holdout_pnu)은 보정에 쓰지 않는다"""
+    tr = refs.trades
+    base = tr[~tr["pnu"].isin(test_pnu)]
+    pool = np.setdiff1d(holdout_pool(tr), test_pnu)
+    fold = np.random.default_rng(seed).integers(0, n_folds, len(pool))
+    out = []
+    for k in range(n_folds):
+        cp = pd.Series(pool[fold == k], name="pnu")
+        for sc in "AB":
+            p = run_holdout(refs, sc, test_pnu=cp, area_blank=(False, True), trades=base)
+            out.append(p.assign(fold=k))
+    return pd.concat(out, ignore_index=True)
