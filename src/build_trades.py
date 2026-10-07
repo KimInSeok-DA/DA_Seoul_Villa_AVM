@@ -16,7 +16,9 @@
    - 공시가격이 없는 거래는 같은 법정동·연도의 ㎡당 가격으로 같은 계산
    - 공시 연도가 2026이 아닌 거래(보충 연도)도 비율이 체계적으로 높아 ㎡당 가격 기준으로 판정
 6. 같은 날 같은 지번·층·면적·금액 거래 묶음은 남기고 dup_group_size 표시
+   - 일괄 매매 합계 가격 제외(1007_11): 여러 호를 한 번에 사고 판 거래는 호마다 합계 금액이 적혀 있다
 7. 표제부(건물 정보) 연결
+   - 재건축 전 거래 제외(1007_11): 지금 표제부 건물의 사용승인 전에 옛 건물로 거래된 것
 8. 파생 변수(연식·지하·최상층)와 층 정합성 불일치 표시
 """
 import sys
@@ -34,6 +36,17 @@ PRICE = ROOT / "data" / "processed" / "apt_price.csv"
 TITLE = ROOT / "data" / "processed" / "bld_title.csv"
 OUT = ROOT / "data" / "processed" / "trades.csv"
 Z_CUT = 3.5  # Iglewicz & Hoaglin(1993) 수정 Z-점수 권고 기준
+# 일괄 매매: 호마다 비율이 구·연도 시장 중앙값의 3배 이상인데 묶음 합계로는 0.5~1.5배. 2.5배로 하면 신축 분양(층만 다른 같은 면적 호를
+# 같은 ㎡단가로 판 것 — 묶음 크기가 2·3호로 달라도 ㎡당 가격이 같아 합계가 아님)까지 잡혀 3배로 둠(1007_11)
+BULK_HIGH, BULK_SUM = 3.0, (0.5, 1.5)
+REBUILT_GAP = 5  # 재건축 전 거래: 거래의 건축년도가 사용승인 연도보다 5년 넘게 이름
+
+
+def apr_date(v):
+    """표제부 사용승인일(YYYYMMDD, 일부 YYYYMM) → 날짜"""
+    s = v.astype("Int64").astype(str)
+    s = s.where(s.str.len() != 6, s + "01")
+    return pd.to_datetime(s, format="%Y%m%d", errors="coerce")
 
 
 def modified_z(x, groups):
@@ -105,6 +118,19 @@ def main():
     key = ["pnu", "floor", "area_m2", "price", "deal_date"]
     t["dup_group_size"] = t.groupby(key)["price"].transform("size")
     step("같은 날 같은 조건 묶음(표시)", int((t["dup_group_size"] > 1).sum()))
+    # 일괄 매매 합계 가격: 같은 법정동·날짜·금액에 서로 다른 호가 2건 이상이고, 호마다 비율은 같은 구·연도 중앙값의
+    # 3배 이상인데 금액을 묶음 공시가격 합으로 나누면 중앙값 수준 → 금액은 여러 호의 합계(호 단가가 아님).
+    # 기준은 2026 공시가격 거래의 비율 중앙값(시장 수준). 보충 연도 공시가격 거래도 같은 기준으로 본다
+    med = t["public_ratio"].where(ratio_ok).groupby([t["sggCd"], t["deal_year"]]).transform("median")
+    g = t.groupby(["bjd_cd", "deal_date", "price"])
+    n = g["price"].transform("size")
+    distinct = (g["pnu"].transform("nunique") + g["floor"].transform("nunique") + g["area_m2"].transform("nunique")) > 3
+    rel = t["public_ratio"] / med
+    all_high = (rel.isna() | (rel >= BULK_HIGH)).groupby([t["bjd_cd"], t["deal_date"], t["price"]]).transform("all")
+    sum_rel = t["price"] / (g["price_public"].transform("mean") * n) / med  # 공시가격 없는 호는 묶음 평균으로 채운 합계
+    bulk = (n >= 2) & distinct & (g["price_public"].transform("count") >= 2) & all_high & sum_rel.between(*BULK_SUM)
+    step("일괄 매매 합계 가격 제외", int(bulk.sum()), f"묶음 {t[bulk].groupby(['bjd_cd', 'deal_date', 'price']).ngroups}개")
+    t = t[~bulk].copy()
 
     # 7. 표제부 연결
     title = pd.read_csv(TITLE, dtype={"pnu": str}).drop(columns=["bld_nm"])
@@ -113,6 +139,11 @@ def main():
     assert len(t) == n0
     step("표제부 연결됨", int(t["title_source"].notna().sum()), str(t["title_source"].value_counts().to_dict()))
     t["elevator"] = t["elevator"].map({True: 1, False: 0, "True": 1, "False": 0}).astype("Int64")
+    # 재건축 전 거래: 지번은 같지만 지금 표제부의 건물이 서기 전 옛 건물의 거래 → 건물 정보가 맞지 않아 제외
+    apr = apr_date(t["use_apr_date"])
+    rebuilt = (t["deal_date"] < apr) & (t["build_year"] < apr.dt.year - REBUILT_GAP)
+    step("재건축 전 거래 제외", int(rebuilt.sum()), f"건물 {t.loc[rebuilt, 'pnu'].nunique()}개")
+    t = t[~rebuilt].copy()
 
     # 8. 파생 변수·정합성 표시
     t["age"] = t["deal_year"] - t["build_year"]  # 건축년도·거래연도 대신 연식 하나만(완전 공선)
