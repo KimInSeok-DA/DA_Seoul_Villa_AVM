@@ -2,7 +2,9 @@
 
 서울 강서구 화곡동·강남구·관악구의 다세대·연립주택에 대해 **지번 + 층 + 호**를 넣으면 매매 시세(추정값·하한·상한·신뢰도·근거)를 내는 모델.
 
-> 작업 중. `predict.py` 1차(기준선) 동작. 현재 진행 상황은 [`HANDOFF.md`](HANDOFF.md).
+> 작업 중. `predict.py` 동작(기준선 + 구간·신뢰도 보정). 현재 진행 상황은 [`HANDOFF.md`](HANDOFF.md).
+>
+> **무엇을 어떻게 왜 했는지 처음부터 따라가려면 [`docs/진행_과정.md`](docs/진행_과정.md)** — 단계별 요약과 흐름도, 각 단계의 의사결정 문서 연결.
 
 ## 설치
 
@@ -73,6 +75,7 @@ python predict.py --input input.csv --output output.csv
 ├─ outputs/            다시 만들 수 있는 표·그림
 ├─ milestones/         재현이 필요한 시점의 결과·모델 메타데이터 보존
 └─ docs/
+   ├─ 진행_과정.md      단계별 요약·흐름도 (처음 볼 문서)
    ├─ AI_활용_기록.md
    ├─ 작업일지/        YYYY-MM-DD.md
    └─ 의사결정/        MMDD_NN_주제.md
