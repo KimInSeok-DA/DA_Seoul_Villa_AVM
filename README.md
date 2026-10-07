@@ -20,8 +20,8 @@ python predict.py --input input.csv --output output.csv
 | 변수 | 발급처 | 용도 |
 |---|---|---|
 | `DATA_GO_KR_API_KEY` | 공공데이터포털(data.go.kr) 활용신청 | 연립다세대 매매·전월세 실거래가, 건축HUB 건축물대장 |
-| `VWORLD_API_KEY` | 브이월드(vworld.kr) 인증키 발급 | 공동주택가격(호별 공시가격), 지오코더 |
-| `KAKAO_REST_API_KEY` | Kakao Developers 앱 → 플랫폼 키 → REST API 키 | 주소 검색(법정동코드·좌표), 지하철역 검색 |
+| `VWORLD_API_KEY` | 브이월드(vworld.kr) 인증키 발급 | 공동주택가격(호별 공시가격), 지오코더(실시간 조회만, 저장하지 않음) |
+| `KAKAO_REST_API_KEY` | Kakao Developers 앱 → 플랫폼 키 → REST API 키 | 예측 중 입력 주소를 실시간 조회(법정동코드·좌표). 약관상 결과는 저장하지 않음 |
 
 ## 데이터
 
@@ -31,7 +31,7 @@ python predict.py --input input.csv --output output.csv
 | 건축물대장 표제부 | 국토교통부 건축HUB, data.go.kr | `src/collect_buildings.py` |
 | 공동주택 공시가격(2026, 호별) | 국토교통부, VWorld | `src/collect_buildings.py` |
 | 법정동코드 | 국토교통부 전국 법정동(2026-06-30), data.go.kr | 파일 다운로드 → `data/reference/` |
-| 지하철역 좌표 | Kakao Local 카테고리 검색 | `src/collect_stations.py` |
+| 지하철역 좌표 | 전국도시철도역사정보 표준데이터(2026-06-30), data.go.kr | 파일 다운로드 → `src/build_stations.py` |
 
 `data/raw/`(API 원본)는 용량 때문에 올리지 않는다. 위 스크립트로 다시 받을 수 있다. `predict.py`가 읽는 정제 데이터는 `data/processed/`에 함께 올린다.
 
