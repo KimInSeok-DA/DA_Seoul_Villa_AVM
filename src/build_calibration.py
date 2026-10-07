@@ -1,6 +1,6 @@
 """구간·신뢰도 보정표 만들기(1007_09) → data/processed/calibration.json (predict.py가 읽음)
 
-사용: python src/build_calibration.py   (약 3분)
+사용: python src/build_calibration.py   (약 12분 — 폴드마다 최종 모델(B1 + XGBoost 보정)을 다시 맞춤)
 
 - 최종 검증 건물(data/processed/holdout_pnu.csv)은 거래까지 모두 빼고, 나머지 후보 건물 2,527개를 5개 폴드로 나눠
   폴드마다 검증 건물처럼 추정한다(A·B 상황 × 면적 있음·비움 → 약 1만 건)
@@ -28,7 +28,7 @@ def main():
     out = ROOT / "outputs"
     out.mkdir(exist_ok=True)
     keep = ["fold", "scenario", "area_blank", "pnu", "sgg_cd", "method", "tier", "n", "area_used", "true_area",
-            "b_sd", "b_gap", "area_sd", "price_est", "price_low", "price_high", "confidence", "actual", "ape", "log_err"]
+            "b_sd", "b_gap", "area_sd", "price_b1", "price_ml_direct", "price_ml_resid", "ml_factor", "price_est", "price_low", "price_high", "confidence", "actual", "ape", "log_err"]
     pred.assign(flags=pred["flags"].map("|".join))[keep + ["flags"]].to_csv(
         out / "calibration_preds.csv", index=False, encoding="utf-8-sig")
     cal.table.to_csv(out / "calibration_table.csv", index=False, encoding="utf-8-sig")

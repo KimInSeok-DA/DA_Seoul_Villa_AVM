@@ -2,9 +2,14 @@
 
 서울 강서구 화곡동·강남구·관악구의 다세대·연립주택에 대해 **지번 + 층 + 호**를 넣으면 매매 시세(추정값·하한·상한·신뢰도·근거)를 내는 모델.
 
-> 작업 중. `predict.py` 동작(기준선 + 구간·신뢰도 보정). 현재 진행 상황은 [`HANDOFF.md`](HANDOFF.md).
+> 작업 중. `predict.py` 동작(최종 모델 + 구간·신뢰도 보정). 현재 진행 상황은 [`HANDOFF.md`](HANDOFF.md).
 >
 > **무엇을 어떻게 왜 했는지 처음부터 따라가려면 [`docs/진행_과정.md`](docs/진행_과정.md)** — 단계별 요약과 흐름도, 각 단계의 의사결정 문서 연결.
+
+## 모델 한 줄 요약
+
+**공시가격 × 시점 보정한 실거래/공시 비율(B1)** 을 기준으로, **XGBoost 두 모델**(건물·입지로 직접 추정 / B1이 빗나간 정도를 보정)의 기하평균으로 건물 특성을 더 반영한다.
+Ridge·KNN·랜덤포레스트·XGBoost를 처음 보는 건물·같은 건물 거래 있음·1년 뒤(시점 밖) 세 상황에서 비교해 골랐다 → [`1007_10`](docs/의사결정/1007_10_ML_비교.md)
 
 ## 설치
 
@@ -33,7 +38,7 @@ python predict.py --input input.csv --output output.csv
 
 - 입력 컬럼: `id, sigungu, dong, jibun, floor, ho, area_m2` (`ho`, `area_m2`는 비어 있을 수 있음)
 - 출력 컬럼: `id, price_est, price_low, price_high, confidence, basis, status`
-- 외부 API를 부르지 않는다. 실행할 때 저장소의 정제 데이터로 모델을 다시 맞춘다(20건 약 20초)
+- 외부 API를 부르지 않는다. 실행할 때 저장소의 정제 데이터로 모델을 다시 맞춘다(20건 약 25초). 새 거래를 정제 데이터에 더하고 다시 실행하면 그대로 반영된다
 - `price_low`~`price_high`는 80% 구간, `confidence`는 검증에서 비슷한 조건의 추정이 실거래가 ±20% 안에 든 비율이다. 둘 다 검증 오차로 만든 보정표 `data/processed/calibration.json`(`src/build_calibration.py`)으로 정한다
 - 규격 검사: `python tests/check_output.py --input tests/sample_input.csv --output output.csv --expect-ok`
 - 예외 입력 예시: `tests/edge_input.csv`(권역 밖, 주소 해석 불가, 지하 표기, 면적 없음 등)
@@ -65,7 +70,7 @@ python predict.py --input input.csv --output output.csv
 
 ```text
 ├─ predict.py          실행 진입점
-├─ src/                수집·정제 코드, avm.py(모델·검증 공용)
+├─ src/                수집·정제 코드, avm.py(B1·검증 공용), ml.py(XGBoost 보정·ML 비교)
 ├─ tests/              입력 표본, 출력 규격 검사
 ├─ notebooks/          검증·분석 노트북 (NN_주제.ipynb, make_NN_*.py가 생성)
 ├─ data/

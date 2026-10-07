@@ -12,10 +12,12 @@ cells = [
 목적: 기준선(01)의 80% 구간은 실제 거래가를 60~65%만 담았고(너무 좁음), 신뢰도는 근거 수준만으로 정해 값이 0.65·0.80 두 개에 몰렸다.
 블라인드 평가는 **신뢰도와 실제 오차가 맞는지**를 보므로, 구간과 신뢰도를 **검증 오차로 다시 정한다.** 설계와 판단은 `docs/의사결정/1007_09_구간_신뢰도_보정.md`.
 
+추정값은 최종 모델(B1 + XGBoost 보정, `docs/의사결정/1007_10_ML_비교.md`)이다. 보정 표본·최종 검증 모두 폴드·상황마다 같은 학습 세트로 최종 모델을 다시 맞춰 추정한다.
+
 | 단계 | 방법 |
 |---|---|
 | 보정 표본 | 최종 검증 건물 632개는 거래까지 모두 빼고, 나머지 후보 2,527개를 5개 폴드로 나눠 폴드마다 검증 건물처럼 추정(A·B 상황 × 면적 있음·비움 → 약 1만 건). `src/build_calibration.py` |
-| 오차 점수 | \\|log 오차\\|를 예측 시점에 아는 변수(구, 면적, 같은 건물 근거·거래 수, 비율의 흩어짐, 면적 추정 여부)로 최소제곱 회귀 |
+| 오차 점수 | \\|log 오차\\|를 예측 시점에 아는 변수(구, 면적, 같은 건물 근거·거래 수, 비율의 흩어짐, 면적 추정 여부, XGBoost 두 모델의 차이·B1에서 옮겨 간 정도)로 최소제곱 회귀 |
 | 구간 | 점수 10분위마다 log 오차의 10%·90% 분위수 |
 | 신뢰도 | 점수 10분위마다 **±20% 적중률**(점수가 클수록 낮아지게 단조 보정) = "검증에서 비슷한 조건의 추정이 실거래가 ±20% 안에 든 비율" |
 | 평가 | 보정에 쓰지 않은 최종 검증 건물 632개(01과 같은 분할) |
@@ -36,18 +38,19 @@ print(f"보정 표본 {len(calib):,}건, 공시비율 {(calib.method == '공시�
     code("""coef = pd.Series(cal.coef, index=ERR_FEATURES, name="계수")
 desc = {"const": "절편", "gangnam": "강남구(기준 관악)", "hwagok": "강서구 화곡동(기준 관악)", "log_area": "log 전용면적",
         "same": "같은 건물 거래가 근거", "log_n": "log(1+같은 건물 거래 수)", "b_sd": "같은 건물 비율의 흩어짐",
-        "b_gap": "같은 건물 비율과 동네 비율의 차이", "area_sd": "동네(법정동·구) 비율의 흩어짐", "area_blank": "면적 비어 추정"}
+        "b_gap": "같은 건물 비율과 동네 비율의 차이", "area_sd": "동네(법정동·구) 비율의 흩어짐", "area_blank": "면적 비어 추정",
+        "ml_gap": "XGBoost 직접·잔차 추정의 차이(|log|)", "ml_shift": "ML 보정 배율(|log|, B1에서 옮겨 간 정도)"}
 pd.DataFrame({"뜻": desc, "계수": coef.round(4)})"""),
     md("## 2. 보정표 (보정 표본, 교차 적합 점수 10분위)"),
     code("""tab = pd.read_csv(OUT / "calibration_table.csv")
 tab.style.format({"점수_상한": "{:.3f}", "중앙값APE": "{:.1%}", "±20%적중률": "{:.1%}", "신뢰도": "{:.2f}", "log오차_q10": "{:.3f}", "log오차_q90": "{:.3f}"})"""),
-    md("## 3. 최종 검증 건물에서 보정 전후\n\n같은 추정값(price_est)에 구간·신뢰도만 바꾼다. 면적 비움은 입력 면적을 지워 공시가격 호 면적 등으로 채우는 경우."),
+    md("## 3. 최종 검증 건물에서 보정 전후\n\n같은 추정값(price_est, 최종 모델)에 구간·신뢰도만 바꾼다. 이전 = 근거 수준 규칙(1007_08), 보정 = 보정표. 면적 비움은 입력 면적을 지워 공시가격 호 면적 등으로 채우는 경우."),
     code("""refs = load_refs()
 test_pnu = pd.read_csv(PROC / "holdout_pnu.csv", dtype=str)["pnu"]
 runs = {}
 for sc in "AB":
-    runs[(sc, "이전")] = run_holdout(refs, sc, test_pnu=test_pnu, area_blank=(False, True))
-    runs[(sc, "보정")] = run_holdout(refs, sc, test_pnu=test_pnu, area_blank=(False, True), calibrator=cal)
+    runs[(sc, "이전")] = run_holdout(refs, sc, test_pnu=test_pnu, area_blank=(False, True), ml=True)
+    runs[(sc, "보정")] = run_holdout(refs, sc, test_pnu=test_pnu, area_blank=(False, True), calibrator=cal, ml=True)
 def metrics(q):
     m = evaluate(q)
     m["순위상관(신뢰도,APE)"] = q.confidence.rank().corr(q.ape.rank())
