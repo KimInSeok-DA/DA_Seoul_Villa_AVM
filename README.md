@@ -67,6 +67,7 @@ python predict.py --input input.csv --output output.csv
 | `DATA_GO_KR_API_KEY` | 공공데이터포털(data.go.kr) 활용신청 | 연립다세대 매매·전월세 실거래가, 건축HUB 건축물대장 |
 | `VWORLD_API_KEY` | 브이월드(vworld.kr) 인증키 발급 | 공동주택가격(호별 공시가격), 연속지적도(필지 좌표·공시지가) |
 | `SEOUL_OPEN_API_KEY` | 서울 열린데이터광장(data.seoul.go.kr) 인증키 신청 | 폐쇄말소대장 표제부(`src/collect_closed_titles.py`) — 철거된 건물의 거래를 학습에서 빼는 데만 씀. 정제 결과 `data/reference/closed_titles.csv`가 저장소에 있어 다시 받을 때만 필요 |
+| `REB_API_KEY` | 한국부동산원 R-ONE(reb.or.kr/r-one) Open API 인증키 | 연립/다세대 매매 지수(`src/collect_reb_index.py`) — 직접 만든 시점 지수 검증에만. 결과 `data/reference/reb_villa_index.csv`가 저장소에 있음 |
 | `KAKAO_REST_API_KEY` | Kakao Developers 앱 → 플랫폼 키 → REST API 키 | API 응답 확인용(`src/probe_apis.py`)만. 약관상 결과 저장이 금지라 데이터 수집·예측에 쓰지 않음 |
 
 ## 데이터
@@ -78,6 +79,7 @@ python predict.py --input input.csv --output output.csv
 | 공동주택 공시가격(호별, 2026년 기준·없는 지번은 2020～2025년 최근 연도로 보충) | 국토교통부, VWorld | `src/collect_buildings.py` → 정제 `src/build_apt_price.py` |
 | 법정동코드 | 국토교통부 전국 법정동(2026-06-30), data.go.kr | 파일 다운로드 → `data/reference/` |
 | 폐쇄말소대장 표제부(철거된 건물) | 서울특별시, 서울 열린데이터광장 OA-22432 | `src/collect_closed_titles.py` |
+| 한국부동산원 연립/다세대 매매 지수(시점 지수 검증용) | 한국부동산원 R-ONE Open API | `src/collect_reb_index.py` → 비교 `src/compare_reb_index.py` |
 | 행정동–법정동 연계표 | 행정안전부 주민등록 주소코드(2026-09-30 시행, `KIKmix`) | 파일 다운로드 → `src/build_admin_dong.py` |
 | 필지 좌표(중심점)·개별공시지가 | 국토교통부 연속지적도, VWorld 데이터 API(data.go.kr 15056910) | `src/collect_parcels.py` |
 | 지하철역 좌표 | 전국도시철도역사정보 표준데이터(2026-06-30), data.go.kr | 파일 다운로드 → `src/build_stations.py` |
