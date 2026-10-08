@@ -13,6 +13,7 @@
   키(VWORLD_API_KEY·DATA_GO_KR_API_KEY)가 없거나 조회가 실패하면 그대로 추정을 계속하고 basis에 적는다. 면적이 비면 공시가격 호 면적 → 같은 건물 거래 면적 → 법정동 거래 면적 순으로 채우고 basis에 적는다
 - price_low~price_high는 80% 구간, confidence는 '검증에서 비슷한 조건의 추정이 실거래가 ±20% 안에 든 비율'.
   둘 다 data/processed/calibration.json(src/build_calibration.py, 1007_09)으로 정한다
+- dong은 법정동을 먼저 찾고, 없으면 행정동(화곡1동·낙성대동 등)으로 보고 지번이 있는 법정동으로 바꿔 basis에 적는다(1008_01)
 - 권역 밖·주소 해석 불가는 status=fail과 사유. 한 행이 실패해도 나머지는 계속한다
 """
 import argparse

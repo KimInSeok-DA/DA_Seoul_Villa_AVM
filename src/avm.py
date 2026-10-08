@@ -57,27 +57,54 @@ def load_refs():
     trades = trades[trades["deal_date"] >= BASE_DATE - pd.DateOffset(years=TRAIN_YEARS)].reset_index(drop=True)
     refs = Refs(codes[["sgg_cd", "bjd_cd", "dong"]], parcels, stations, ap, trades)
     refs.ap_by_pnu = dict(tuple(ap.groupby("pnu")))  # 입력마다 전체를 훑지 않게 지번별로 미리 나눔
+    refs.admin = pd.read_csv(REF / "행정동_법정동_행정안전부_20260930.csv", dtype=str, encoding="utf-8-sig")
+    refs.admin["key"] = refs.admin["admin_dong"].map(dong_key)
+    refs.villa_pnu = set(ap["pnu"]) | set(trades["pnu"])  # 공시가격·거래가 있는 지번(다세대·연립이 있는 땅)
     return refs
 
 
 # ---------------------------------------------------------------- 주소 → PNU
+def dong_key(name):
+    """동 이름 비교용: 띄어쓰기를 없애고 '화곡제1동'·'화곡1동'을 같게"""
+    return re.sub(r"제(\d)", r"\1", str(name or "").replace(" ", ""))
+
+
 def parse_address(refs, sigungu, dong, jibun):
+    """입력 주소 → (pnu, bjd, sgg, 메모). 동은 법정동을 먼저 찾고, 없으면 행정동으로 보고 법정동을 고른다(1008_01).
+    행정동이 법정동 여러 개에 걸치면 그 지번에 다세대·연립(공시가격·거래)이 있는 법정동 → 필지가 있는 법정동 순으로
+    하나로 정해질 때만 쓰고, 정해지지 않으면 fail"""
     sigungu, dong, jibun = str(sigungu or "").strip(), str(dong or "").strip(), str(jibun or "").strip()
     sgg = next((code for name, code in SGG.items() if name in sigungu), None)
     if sgg is None or ("서울" not in sigungu and sigungu not in SGG):
         raise InputError(f"권역 밖({sigungu or '시군구 없음'})")
-    if sgg == "11500" and dong != "화곡동":
-        raise InputError(f"권역 밖(강서구는 화곡동만, 입력 {dong or '법정동 없음'})")
-    hit = refs.codes[(refs.codes["sgg_cd"] == sgg) & (refs.codes["dong"] == dong)]
-    if hit.empty:
-        raise InputError(f"주소 해석 불가(법정동 '{dong}'이 {SGG_NAME[sgg]}에 없음)")
-    bjd = hit["bjd_cd"].iloc[0]
     j = jibun.replace("번지", "").replace(" ", "")
     m = re.fullmatch(r"(산)?(\d{1,4})(?:-(\d{1,4}))?", j)
     if not m:
         raise InputError(f"주소 해석 불가(지번 '{jibun}')")
-    pnu = f"{bjd}{'2' if m.group(1) else '1'}{int(m.group(2)):04d}{int(m.group(3) or 0):04d}"
-    return pnu, bjd, sgg
+    lot = f"{'2' if m.group(1) else '1'}{int(m.group(2)):04d}{int(m.group(3) or 0):04d}"
+
+    key = dong_key(dong)
+    legal = refs.codes[(refs.codes["sgg_cd"] == sgg) & (refs.codes["dong"].map(dong_key) == key)]
+    admin = refs.admin[(refs.admin["sgg_cd"] == sgg) & (refs.admin["key"] == key)]
+    note = None
+    if not legal.empty and (admin.empty or legal["bjd_cd"].iloc[0] + lot in refs.parcels.index):
+        bjd = legal["bjd_cd"].iloc[0]  # 법정동 이름(행정동과 이름이 같아도 그 법정동에 지번이 있으면 법정동으로)
+    elif not admin.empty:
+        cand = admin[["bjd_cd", "dong"]].drop_duplicates()
+        pick = cand[[b + lot in refs.villa_pnu for b in cand["bjd_cd"]]]
+        if len(pick) != 1:
+            pick = cand[[b + lot in refs.parcels.index for b in cand["bjd_cd"]]] if pick.empty else pick
+        if len(pick) != 1:
+            names = "·".join(cand["dong"])
+            raise InputError(f"주소 해석 불가(행정동 '{dong}'의 법정동 {names} 중 지번 {jibun}이 있는 곳을 하나로 정할 수 없음)")
+        bjd = pick["bjd_cd"].iloc[0]
+        note = f"행정동 {admin['admin_dong'].iloc[0]} → 법정동 {pick['dong'].iloc[0]}"
+    else:
+        raise InputError(f"주소 해석 불가(동 '{dong}'이 {SGG_NAME[sgg]}의 법정동·행정동에 없음)")
+    if sgg == "11500" and bjd != "1150010300":
+        legal_nm = refs.codes.loc[refs.codes["bjd_cd"] == bjd, "dong"].iloc[0]
+        raise InputError(f"권역 밖(강서구는 화곡동만, 입력 {dong}{f' → 법정동 {legal_nm}' if note else ''})")
+    return bjd + lot, bjd, sgg, note
 
 
 def parse_floor(floor):
@@ -371,7 +398,7 @@ def estimate(refs, model, row, use_public=True, calibrator=None, ml=None, live=N
     ml(ml.MLModel)이 있으면 B1 추정을 XGBoost로 보정(1007_10, 최종 모델)
     live(live_lookup.LiveLookup)가 있으면 수집 데이터에 없는 지번의 공시가격·표제부를 실행 중 조회(1007_12)
     calibrator가 있으면 구간·신뢰도를 검증 오차로 보정(1007_09), 없으면 근거 수준 규칙(1007_08)"""
-    pnu, bjd, sgg = parse_address(refs, row.get("sigungu"), row.get("dong"), row.get("jibun"))
+    pnu, bjd, sgg, addr_note = parse_address(refs, row.get("sigungu"), row.get("dong"), row.get("jibun"))
     floor = parse_floor(row.get("floor"))
     ho = str(row.get("ho") or "").strip() or None
     area = pd.to_numeric(row.get("area_m2"), errors="coerce")
@@ -379,7 +406,8 @@ def estimate(refs, model, row, use_public=True, calibrator=None, ml=None, live=N
     known = pnu in refs.parcels.index or pnu in refs.ap_by_pnu or pnu in model.n_trades.index
     if not known:  # 필지·공시가격·거래 어디에도 없으면 존재하지 않는 지번으로 본다(필지는 3개 구 전체를 수집)
         raise InputError(f"주소 해석 불가(지번 {row.get('jibun')} 필지 없음)")
-    flags = live.fill(refs, pnu, ml) if live is not None else []
+    flags = [addr_note] if addr_note else []
+    flags += live.fill(refs, pnu, ml) if live is not None else []
     pp, p_area, p_year, pflags = lookup_public(refs, pnu, floor, ho, area)
     flags += pflags
     if not use_public:
