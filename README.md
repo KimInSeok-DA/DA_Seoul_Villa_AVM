@@ -81,6 +81,7 @@ python predict.py --input input.csv --output output.csv
 ├─ milestones/         재현이 필요한 시점의 결과·모델 메타데이터 보존
 └─ docs/
    ├─ 진행_과정.md      단계별 요약·흐름도 (처음 볼 문서)
+   ├─ PPT_재료.md       PPT 항목별 표·예시·그림 위치
    ├─ AI_활용_기록.md
    ├─ 작업일지/        YYYY-MM-DD.md
    └─ 의사결정/        MMDD_NN_주제.md
