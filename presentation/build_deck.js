@@ -1,0 +1,592 @@
+// 발표 자료 생성: node presentation/build_deck.js  (pptxgenjs 필요: npm install pptxgenjs)
+// 내용의 원본은 docs/PPT_재료.md, 그림은 outputs/figures/eda_*.png. 수치를 여기서 새로 만들지 않는다
+// 출력: presentation/AVM_발표.pptx  (제출 파일명은 제출할 때 따로 바꾼다 — 공개 저장소에 회사 이름을 남기지 않기 위해)
+const path = require("path");
+const fs = require("fs");
+const pptxgen = require("pptxgenjs");
+
+const ROOT = path.resolve(__dirname, "..");
+const FIG = (n) => path.join(ROOT, "outputs", "figures", `eda_${n}.png`);
+const OUT = path.join(__dirname, "AVM_발표.pptx");
+
+// 색: 짙은 남색이 주(제목·강조 배경), 주황 한 가지를 강조, 그림의 권역 3색(파랑·주황·청록)과 맞춤
+const COL = { navy: "1B2640", navy2: "2C3A5C", ink: "1F2328", ink2: "52514E", muted: "8A8984", line: "D9DCE3",
+  tint: "F2F4F8", white: "FFFFFF", orange: "EB6834", blue: "2A78D6", aqua: "1BAF7A", red: "D03B3B" };
+const FONT = "Malgun Gothic";
+
+const pres = new pptxgen();
+pres.layout = "LAYOUT_WIDE"; // 13.333 x 7.5
+pres.author = "김인석";
+pres.title = "서울 다세대(빌라) 자동 시세 산정 모델";
+pres.theme = { headFontFace: FONT, bodyFontFace: FONT };
+const W = 13.333, H = 7.5, M = 0.6;
+
+pres.defineSlideMaster({
+  title: "CONTENT",
+  background: { color: COL.white },
+  objects: [
+    { placeholder: { options: { name: "title", type: "title", x: M, y: 0.35, w: W - 2 * M, h: 0.8, fontFace: FONT, fontSize: 26,
+      bold: true, color: COL.ink, valign: "middle", align: "left", margin: 0 }, text: "" } },
+    { placeholder: { options: { name: "kicker", type: "body", x: M, y: 0.12, w: 6, h: 0.3, fontFace: FONT, fontSize: 11,
+      color: COL.orange, bold: true, margin: 0 }, text: "" } },
+  ],
+  slideNumber: { x: W - 1.0, y: H - 0.45, w: 0.5, h: 0.3, fontFace: FONT, fontSize: 10, color: COL.muted, align: "right" },
+});
+pres.defineSlideMaster({ title: "DARK", background: { color: COL.navy } });
+
+// ---------------------------------------------------------------- 도구
+function pngSize(file) {
+  const b = fs.readFileSync(file);
+  return { w: b.readUInt32BE(16), h: b.readUInt32BE(20) };
+}
+function img(slide, name, x, y, maxW, maxH) { // 비율 유지, 상자 안 가운데
+  const f = FIG(name), s = pngSize(f);
+  let w = maxW, h = (maxW * s.h) / s.w;
+  if (h > maxH) { h = maxH; w = (maxH * s.w) / s.h; }
+  slide.addImage({ path: f, x: x + (maxW - w) / 2, y: y + (maxH - h) / 2, w, h });
+}
+function content(kicker, title) {
+  const s = pres.addSlide({ masterName: "CONTENT" });
+  s.addText(kicker, { placeholder: "kicker" });
+  s.addText(title, { placeholder: "title" });
+  return s;
+}
+function text(slide, t, o) { slide.addText(t, { isTextBox: true, fontFace: FONT, fontSize: 14, color: COL.ink, margin: 0, valign: "top", ...o }); }
+function bullets(slide, items, o) {
+  slide.addText(items.map((t, i) => ({ text: t, options: { bullet: { indent: 14 }, breakLine: i < items.length - 1, paraSpaceAfter: 6 } })),
+    { isTextBox: true, fontFace: FONT, fontSize: 14, color: COL.ink, margin: 0, valign: "top", ...o });
+}
+function card(slide, x, y, w, h, fill) {
+  slide.addShape(pres.shapes.ROUNDED_RECTANGLE, { x, y, w, h, fill: { color: fill || COL.tint }, line: { color: fill || COL.tint }, rectRadius: 0.08 });
+}
+function stat(slide, x, y, w, big, label, color) {
+  card(slide, x, y, w, 1.6);
+  text(slide, big, { x: x + 0.25, y: y + 0.18, w: w - 0.5, h: 0.8, fontSize: 36, bold: true, color: color || COL.navy, valign: "middle" });
+  text(slide, label, { x: x + 0.25, y: y + 1.0, w: w - 0.5, h: 0.5, fontSize: 12, color: COL.ink2 });
+}
+function table(slide, rows, o) { // rows[0] = 머리글
+  const head = rows[0].map((c) => ({ text: c, options: { bold: true, color: COL.white, fill: { color: COL.navy2 } } }));
+  const body = rows.slice(1).map((r, i) => r.map((c) => (typeof c === "object" ? c : { text: String(c), options: { fill: { color: i % 2 ? COL.tint : COL.white } } })));
+  slide.addTable([head, ...body], { fontFace: FONT, fontSize: 12, color: COL.ink, border: { type: "solid", pt: 0.5, color: COL.line },
+    valign: "middle", margin: [3, 6, 3, 6], ...o });
+}
+function note(slide, t) { text(slide, t, { x: M, y: H - 0.55, w: W - 2 * M - 1, h: 0.35, fontSize: 10, color: COL.muted, valign: "middle" }); }
+
+// 본문은 비전공자 기준(평가 항목: PPT만 보고 이해할 수 있는지) — 장마다 제목 아래 "쉽게 말하면" 한 줄, 전문 용어는 부록으로
+const Y0 = 1.75; // 본문 시작
+function plain(slide, t) { // 제목 아래 쉬운 한 줄
+  text(slide, t, { x: M, y: 1.12, w: W - 2 * M, h: 0.45, fontSize: 15, color: COL.ink2, valign: "middle" });
+}
+
+// ---------------------------------------------------------------- 표지
+{
+  const s = pres.addSlide({ masterName: "DARK" });
+  text(s, "자동 시세 산정 모델(AVM)", { x: M + 0.2, y: 1.6, w: 10, h: 0.5, fontSize: 18, color: COL.orange, bold: true });
+  text(s, "주소와 층만 넣으면\n빌라 시세를 알려 주는 모델", { x: M + 0.2, y: 2.2, w: 11, h: 1.9, fontSize: 40, bold: true, color: COL.white });
+  text(s, "서울 강서구 화곡동 · 관악구 · 강남구의 다세대·연립주택  |  기준일 2026-10-06", { x: M + 0.2, y: 4.35, w: 11, h: 0.4, fontSize: 16, color: "C9D3E6" });
+  text(s, "김인석", { x: M + 0.2, y: 6.2, w: 6, h: 0.4, fontSize: 16, color: COL.white });
+  text(s, "github.com/KimInSeok-DA/DA_Seoul_Villa_AVM", { x: M + 0.2, y: 6.6, w: 8, h: 0.35, fontSize: 12, color: "C9D3E6" });
+}
+
+// ---------------------------------------------------------------- 한눈에 보기
+{
+  const s = content("한눈에 보기", "정부가 매긴 집값에서 출발해, 건물 특징으로 다듬었다");
+  plain(s, "결과: 추정은 실제 거래가와 보통 9% 정도 차이 나고, 10건 중 8건은 ±20% 안에 들어온다");
+  const y = Y0, w = 2.85, g = 0.25;
+  stat(s, M, y, w, "9%", "실제 가격과의 보통 차이");
+  stat(s, M + (w + g), y, w, "80%", "실제 가격 ±20% 안에 든 비율(10건 중 8건)");
+  stat(s, M + 2 * (w + g), y, w, "86%", "신뢰도 0.87이라 한 물건이 실제로 맞은 비율", COL.orange);
+  stat(s, M + 3 * (w + g), y, w, "17초", "20건 계산(기준 30분 이내)");
+  const steps = [["데이터 모으기", "6년치 실거래에서 문제 거래를\n빼고 최근 3년 1만 4천 건"],
+    ["기본 추정", "공시가격 × 그 동네에서\n실제로 거래된 배율"], ["기계학습 보정", "연식·층·승강기·위치처럼\n공시가격이 덜 반영한 것"],
+    ["믿을 정도 계산", "가격 범위와 신뢰도를\n과거 오차로 계산"]];
+  const sy = 3.75, sw = 2.85;
+  steps.forEach(([h, b], i) => {
+    const x = M + i * (sw + g);
+    s.addShape(pres.shapes.OVAL, { x, y: sy, w: 0.5, h: 0.5, fill: { color: COL.navy }, line: { color: COL.navy } });
+    text(s, String(i + 1), { x, y: sy, w: 0.5, h: 0.5, fontSize: 16, bold: true, color: COL.white, align: "center", valign: "middle" });
+    text(s, h, { x: x + 0.65, y: sy, w: sw - 0.65, h: 0.5, fontSize: 14, bold: true, valign: "middle" });
+    text(s, b, { x, y: sy + 0.65, w: sw, h: 1.0, fontSize: 12, color: COL.ink2 });
+  });
+  card(s, M, 5.6, W - 2 * M, 1.05);
+  text(s, "크게 틀린 경우는 대부분 가족 간 거래·급매처럼 시세와 다르게 거래된 집이었다. 이런 사정은 주소만으로 알 수 없어 한계로 남겼고, 지하층·오래된 건물처럼 미리 알 수 있는 위험은 신뢰도를 낮춰 표시한다.",
+    { x: M + 0.3, y: 5.7, w: W - 2 * M - 0.6, h: 0.85, fontSize: 14, color: COL.ink, valign: "middle" });
+}
+
+// ---------------------------------------------------------------- 읽는 법
+{
+  const s = content("읽는 법", "이 발표에 나오는 숫자 네 가지");
+  plain(s, "예시: 화곡동 빌라 1채를 넣으면 이렇게 나온다 — 추정 2.43억, 범위 1.97억 ~ 2.98억, 신뢰도 0.80");
+  // 범위 막대 그림
+  const bx = M + 0.4, by = 2.3, bw = 11.3, lo = 1.97, hi = 2.98, est = 2.43, min = 1.7, max = 3.2;
+  const X = (v) => bx + ((v - min) / (max - min)) * bw;
+  s.addShape(pres.shapes.LINE, { x: bx, y: by + 0.35, w: bw, h: 0, line: { color: COL.line, width: 1.5 } });
+  s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: X(lo), y: by + 0.15, w: X(hi) - X(lo), h: 0.4, fill: { color: "CADBF3" }, line: { color: "CADBF3" }, rectRadius: 0.2 });
+  s.addShape(pres.shapes.OVAL, { x: X(est) - 0.16, y: by + 0.19, w: 0.32, h: 0.32, fill: { color: COL.navy }, line: { color: COL.white, width: 2 } });
+  text(s, "추정 2.43억", { x: X(est) - 1, y: by - 0.35, w: 2, h: 0.35, fontSize: 14, bold: true, align: "center", color: COL.navy });
+  text(s, "1.97억", { x: X(lo) - 0.6, y: by + 0.65, w: 1.2, h: 0.3, fontSize: 12, align: "center", color: COL.ink2 });
+  text(s, "2.98억", { x: X(hi) - 0.6, y: by + 0.65, w: 1.2, h: 0.3, fontSize: 12, align: "center", color: COL.ink2 });
+  const cards = [
+    ["오차율", "추정이 실제 거래가와 몇 % 다른지. 여러 건의 가운데 값(중앙값)을 쓴다 — 이 모델은 약 9%"],
+    ["±20% 적중률", "실제 가격의 20% 위아래 안에 든 추정의 비율. 3억짜리 집이면 2.4억~3.6억 — 이 모델은 10건 중 8건"],
+    ["80% 범위", "위 막대처럼 하한~상한. 실제 가격이 10번 중 8번은 이 안에 들어오도록 계산 — 실제로 78~82%"],
+    ["신뢰도(0~1)", "이 추정이 ±20% 안에 들 가능성. 0.8이면 비슷한 물건 10건 중 8건이 맞았다는 뜻 — 낮을수록 조심"],
+  ];
+  const cw = (W - 2 * M - 0.75) / 4;
+  cards.forEach(([h, b], i) => {
+    const x = M + i * (cw + 0.25);
+    card(s, x, 3.65, cw, 2.2);
+    text(s, h, { x: x + 0.25, y: 3.8, w: cw - 0.5, h: 0.4, fontSize: 17, bold: true, color: COL.navy });
+    text(s, b, { x: x + 0.25, y: 4.3, w: cw - 0.5, h: 1.45, fontSize: 13 });
+  });
+}
+
+// ---------------------------------------------------------------- 1. 기술 스택
+{
+  const s = content("1  기술 스택", "Python으로 데이터를 모으고, 기계학습으로 추정했다");
+  plain(s, "모든 데이터는 정부 공공 API에서 직접 받았고, 상용 시세 서비스는 쓰지 않았다(버전·라이브러리 상세는 부록)");
+  const items = [["언어", "Python", "수집부터 실행까지 한 언어로"], ["데이터 처리", "pandas · numpy", "표 형태의 데이터를 합치고 다듬기"],
+    ["기계학습", "XGBoost · scikit-learn", "여러 방법을 비교하고 가장 나은 것 선택"], ["공공 데이터", "공공데이터포털·VWorld", "실거래가, 공시가격, 건축물대장, 좌표"],
+    ["시각화·기록", "Jupyter·matplotlib·Git", "분석 노트북, 그림, 작업 이력 공개"], ["AI 도구", "Claude Code", "코드·점검·문서화를 함께(7번)"]];
+  const cw = (W - 2 * M - 0.5) / 3, ch = 2.35;
+  items.forEach(([k, v, d], i) => {
+    const x = M + (i % 3) * (cw + 0.25), y = Y0 + Math.floor(i / 3) * (ch + 0.25);
+    card(s, x, y, cw, ch, i === 5 ? "FBEDE7" : COL.tint);
+    text(s, k, { x: x + 0.3, y: y + 0.25, w: cw - 0.6, h: 0.35, fontSize: 13, color: i === 5 ? COL.orange : COL.ink2, bold: true });
+    text(s, v, { x: x + 0.3, y: y + 0.7, w: cw - 0.6, h: 0.55, fontSize: 20, bold: true, color: COL.navy });
+    text(s, d, { x: x + 0.3, y: y + 1.4, w: cw - 0.6, h: 0.8, fontSize: 13 });
+  });
+}
+
+// ---------------------------------------------------------------- 2. 데이터 소스
+{
+  const s = content("2  데이터 소스", "정부가 공개한 데이터 7가지를 주소(지번)로 하나로 묶었다");
+  plain(s, "각 데이터가 알려 주는 것 — 다세대와 연립을 모두 포함했다(건수·기간 상세는 부록)");
+  const items = [
+    ["실거래가", "얼마에 팔렸나", "2020-10 ~ 2026-10 매매 36,997건"], ["공시가격", "정부가 매긴 호별 가격", "2026년, 107,236호"],
+    ["건축물대장", "언제 지었나, 승강기·층수·세대수", "9,928개 건물"], ["필지 좌표·땅값", "어디 있나, 땅값은 얼마인가", "3개 구 123,615필지"],
+    ["지하철역", "역에서 얼마나 먼가", "275개 역"], ["법정동코드", "주소를 고유번호로 바꾸기", "3개 구 30개 동"],
+  ];
+  const cw = (W - 2 * M - 0.5) / 3, ch = 1.95;
+  items.forEach(([k, q, n], i) => {
+    const x = M + (i % 3) * (cw + 0.25), y = Y0 + Math.floor(i / 3) * (ch + 0.25);
+    card(s, x, y, cw, ch);
+    text(s, k, { x: x + 0.3, y: y + 0.22, w: cw - 0.6, h: 0.45, fontSize: 20, bold: true, color: COL.navy });
+    text(s, q, { x: x + 0.3, y: y + 0.75, w: cw - 0.6, h: 0.4, fontSize: 14 });
+    text(s, n, { x: x + 0.3, y: y + 1.25, w: cw - 0.6, h: 0.4, fontSize: 13, color: COL.ink2 });
+  });
+  text(s, "전월세 거래 14만 건도 받았지만 전세금은 매매가와 같지 않아 쓰지 않았다. 지도 서비스(Kakao 등)는 결과를 저장하면 안 되는 약관이라 정부 지적도에서 좌표를 받았다.",
+    { x: M, y: 6.2, w: W - 2 * M, h: 0.55, fontSize: 13, color: COL.ink2 });
+}
+
+// ---------------------------------------------------------------- 2. 정제
+{
+  const s = content("2  데이터 다듬기", "믿을 수 없는 거래는 빼고, 최근 3년만 썼다");
+  plain(s, "취소된 계약, 가족 간 거래처럼 시세와 다른 가격, 헐린 옛 건물의 거래를 걸러 냈다");
+  const steps = [["36,997", "받은 매매 거래"], ["−2,188", "계약이 취소된 거래"], ["−331", "공시가격보다 지나치게 싼 거래\n(가족 간 거래 등으로 의심)"],
+    ["−592", "재건축 전 옛 건물의 거래,\n여러 집을 한꺼번에 판 거래"], ["33,886", "다듬은 거래"], ["14,520", "학습에 쓴 최근 3년"]];
+  steps.forEach(([n, l], i) => {
+    const y = Y0 + i * 0.83, dark = i === 0 || i >= 4;
+    card(s, M, y, 4.3, 0.72, dark ? COL.navy : COL.tint);
+    text(s, n, { x: M + 0.2, y, w: 1.4, h: 0.72, fontSize: 20, bold: true, color: dark ? COL.white : COL.orange, valign: "middle" });
+    text(s, l, { x: M + 1.65, y, w: 2.55, h: 0.72, fontSize: 12, color: dark ? COL.white : COL.ink, valign: "middle" });
+  });
+  img(s, "A1_monthly_volume", M + 4.6, Y0 - 0.05, 7.55, 3.25);
+  bullets(s, [
+    "거래량은 2021년에 가장 많았다가 2023년까지 크게 줄었다 — 시장 분위기가 달라 오래된 거래는 오늘 시세와 잘 맞지 않는다",
+    "3년·5년·6년을 같은 시험으로 비교했더니 최근 3년만 쓸 때 가장 정확했다(처음 보는 건물 기준 10건 중 7.5건 → 8건 적중)",
+  ], { x: M + 4.8, y: 5.15, w: 7.3, h: 1.6, fontSize: 13 });
+}
+
+// ---------------------------------------------------------------- 3. 시세 요인 ① 공시가격
+{
+  const s = content("3  시세 요인", "정부가 매긴 공시가격만 알아도 실제 가격 차이의 87%가 설명된다");
+  plain(s, "그래서 공시가격을 출발점으로 삼았다 — 실제 거래가는 보통 공시가격의 1.76배");
+  img(s, "B1_price_vs_public", M, Y0 - 0.1, 5.0, 4.9);
+  img(s, "B2_r2_single_features", M + 5.3, Y0 - 0.1, 6.8, 2.95);
+  bullets(s, [
+    "왼쪽: 점 하나가 거래 1건. 공시가격이 높을수록 실제 가격도 높아 점들이 한 줄로 늘어선다",
+    "오른쪽: 요인 하나로 가격 차이를 얼마나 설명하나. 공시가격(87%)이 면적·지역·땅값·연식·역·층을 모두 합친 것(72%)보다 크다",
+    "공시가격은 정부가 위치·면적·층·연식을 따져 집마다 매긴 가격이라, 이미 많은 정보가 들어 있다",
+  ], { x: M + 5.5, y: 4.85, w: 6.6, h: 2.0, fontSize: 13 });
+}
+
+// ---------------------------------------------------------------- 3. 시세 요인 ② 공시가격이 놓치는 것
+{
+  const s = content("3  시세 요인", "공시가격이 놓치는 것 — 오래된 건물과 저층");
+  plain(s, "같은 공시가격이라도 오래된 건물·지하·1층은 실제로 더 비싸게(배율이 높게) 거래된다 → 기계학습으로 보정");
+  img(s, "C1_age", M, Y0 - 0.05, 7.4, 2.6);
+  img(s, "C2_floor", M, Y0 + 2.6, 7.4, 2.6);
+  card(s, M + 7.7, Y0, 4.43, 5.0);
+  bullets(s, [
+    "왼쪽 그래프: 새 건물일수록 ㎡당 가격이 높다",
+    "오른쪽 그래프: 그런데 '실제 가격 ÷ 공시가격' 배율은 오래된 건물이 더 높다(강남 1.76배 → 2.12배). 재개발 기대가 공시가격에 덜 들어 있다",
+    "지하는 지상 ㎡당 가격의 54~59%, 배율은 지하·1층이 높다",
+    "이 차이를 연식·층·승강기·면적·위치로 기계학습이 보정한다",
+  ], { x: M + 7.95, y: Y0 + 0.25, w: 3.95, h: 4.6, fontSize: 13 });
+}
+
+// ---------------------------------------------------------------- 3. 쓴 변수·버린 변수
+{
+  const s = content("3  시세 요인", "쓴 정보와 버린 정보 — 주소와 층만으로 알 수 있는 것만 썼다");
+  plain(s, "가격을 계산할 때 알 수 없는 정보(예: 직거래였는지)는 아무리 중요해도 쓸 수 없다");
+  const colW = (W - 2 * M - 0.3) / 2;
+  card(s, M, Y0, colW, 4.0);
+  text(s, "쓴 정보", { x: M + 0.3, y: Y0 + 0.15, w: 4, h: 0.4, fontSize: 18, bold: true, color: COL.navy });
+  bullets(s, [
+    "공시가격, 그 동네의 실거래 배율, 시기별 시세 변화",
+    "연식 · 층(지하·꼭대기 층 여부) · 건물 층수 · 전용면적",
+    "승강기 · 세대수 · 세대당 주차",
+    "지하철역 거리 · 땅값 · 위치(좌표) · 지역",
+    "기계학습이 많이 쓴 것: 연식 · 지역 · 층 · 건물 층수 · 면적 · 위치",
+  ], { x: M + 0.3, y: Y0 + 0.7, w: colW - 0.6, h: 3.2, fontSize: 14 });
+  const x2 = M + colW + 0.3;
+  card(s, x2, Y0, colW, 4.0, "FBEDE7");
+  text(s, "버린 정보와 이유", { x: x2 + 0.3, y: Y0 + 0.15, w: 5, h: 0.4, fontSize: 18, bold: true, color: COL.orange });
+  bullets(s, [
+    "직거래 여부·파는 사람/사는 사람: 계산할 때 알 수 없다",
+    "전월세: 전세금은 매매가와 같지 않다",
+    "건축년도: 연식과 같은 정보 / 동 수: 세대수와 거의 같은 정보",
+    "건물 구조: 90%가 철근콘크리트라 구별이 안 된다",
+    "학교·공원 거리: 시간 안에 못 했다 → 개선안",
+  ], { x: x2 + 0.3, y: Y0 + 0.7, w: colW - 0.6, h: 3.2, fontSize: 14 });
+}
+
+// ---------------------------------------------------------------- 4. 모델 흐름도
+{
+  const s = content("4  모델 설계", "주소 한 줄이 시세·범위·신뢰도·근거가 되기까지");
+  plain(s, "실행할 때마다 최신 거래로 다시 계산한다 — 새 거래가 쌓이면 다시 실행만 하면 반영된다");
+  const boxes = [
+    ["① 입력", "구·동·지번·층\n호·면적(비어도 됨)", COL.tint], ["② 주소 확인", "고유번호(지번)로 바꾸기\n지역 밖이면 이유와 함께 실패", COL.tint],
+    ["③ 공시가격 찾기", "모은 데이터에 없으면\n그 자리에서 정부 API 조회", COL.tint], ["④ 기본 추정", "공시가격 × 동네 실거래 배율\n(같은 건물 거래가 있으면 우선)", COL.navy],
+    ["⑤ 기계학습 보정", "연식·층·위치 등으로\n기본 추정을 다듬기", COL.navy], ["⑥ 추정값", "보정한 두 값의 평균", COL.navy],
+    ["⑦ 범위·신뢰도", "비슷한 물건의 과거 오차로\n80% 범위와 신뢰도 계산", COL.orange], ["⑧ 출력", "추정·하한·상한·신뢰도\n근거 한 줄", COL.tint],
+  ];
+  const bw = 2.75, bh = 1.45, gx = 0.37;
+  boxes.forEach(([h, b, fill], i) => {
+    const row = i < 4 ? 0 : 1, col = row === 0 ? i : 7 - i;
+    const x = M + col * (bw + gx), y = row === 0 ? 1.85 : 4.35;
+    const dark = fill !== COL.tint;
+    card(s, x, y, bw, bh, fill);
+    text(s, h, { x: x + 0.2, y: y + 0.12, w: bw - 0.4, h: 0.4, fontSize: 15, bold: true, color: dark ? COL.white : COL.navy });
+    text(s, b, { x: x + 0.2, y: y + 0.55, w: bw - 0.4, h: 0.85, fontSize: 12, color: dark ? COL.white : COL.ink2 });
+    if (row === 0 && col < 3) s.addShape(pres.shapes.LINE, { x: x + bw + 0.05, y: y + bh / 2, w: gx - 0.1, h: 0, line: { color: COL.muted, width: 1.5, endArrowType: "triangle" } });
+    if (row === 1 && col > 0) s.addShape(pres.shapes.LINE, { x: x - gx + 0.05, y: y + bh / 2, w: gx - 0.1, h: 0, line: { color: COL.muted, width: 1.5, beginArrowType: "triangle" } });
+  });
+  const lastX = M + 3 * (bw + gx) + bw / 2;
+  s.addShape(pres.shapes.LINE, { x: lastX, y: 1.85 + bh + 0.05, w: 0, h: 4.35 - 1.85 - bh - 0.1, line: { color: COL.muted, width: 1.5, endArrowType: "triangle" } });
+  text(s, "⑤의 두 값: 건물 특징만으로 직접 낸 가격, 그리고 ④가 얼마나 빗나갈지 예측해 고친 가격 — 둘의 장단점이 달라 평균을 쓴다",
+    { x: M, y: 6.15, w: W - 2 * M, h: 0.5, fontSize: 13, color: COL.ink2 });
+}
+
+// ---------------------------------------------------------------- 4. 모델 고르기
+{
+  const s = content("4  모델 설계", "13가지 방법을 같은 시험으로 비교해 가장 고른 성적을 낸 것을 골랐다");
+  plain(s, "시험 방식: 일부 건물을 떼어 두고, 나머지로 배운 뒤 떼어 둔 건물의 실제 거래가를 맞혀 본다");
+  s.addChart(pres.charts.BAR, [{ name: "±20% 적중률", labels: ["기본 추정만", "선형 회귀", "비슷한 거래 평균", "랜덤포레스트", "XGBoost(선택)"],
+    values: [73.7, 73.7, 77.1, 77.2, 78.6] }], {
+    x: M, y: Y0, w: 6.2, h: 4.7, barDir: "bar", chartColors: ["9FB4D9", "9FB4D9", "9FB4D9", "9FB4D9", COL.navy],
+    showValue: true, dataLabelPosition: "outEnd", dataLabelFormatCode: "0.0\"%\"", dataLabelFontSize: 12, dataLabelColor: COL.ink2,
+    dataLabelFontFace: "+mn-lt", catAxisLabelFontFace: "+mn-lt", catAxisLabelFontSize: 12, catAxisLabelColor: COL.ink,
+    valAxisHidden: true, valAxisMinVal: 60, valAxisMaxVal: 82, valGridLine: { style: "none" }, catGridLine: { style: "none" },
+    showLegend: false, showTitle: true, title: "±20% 안에 맞힌 비율(같은 건물 거래가 있는 경우, 방법별 최고)",
+    titleFontSize: 12, titleColor: COL.ink2, titleFontFace: "+mn-lt", barGapWidthPct: 60,
+  });
+  bullets(s, [
+    "후보: 선형 회귀, 비슷한 거래 평균, 랜덤포레스트, XGBoost 4가지 × 계산 방식 3가지 = 12가지 + 기본 추정",
+    "시험은 세 종류: 처음 보는 건물 / 과거 거래가 있는 건물 / 1년 전에 만든 모델로 1년 뒤 맞히기",
+    "같은 건물이 '배우는 쪽'과 '시험 보는 쪽'에 섞이지 않게 건물 단위로 나눴다(섞이면 성적이 부풀려진다)",
+    "고르는 기준은 결과를 보기 전에 정했고, 차이가 우연이 아닌지 2,000번 다시 뽑아 확인했다",
+    "XGBoost(두 방식의 평균)가 세 시험 모두에서 상위권이라 선택",
+  ], { x: M + 6.6, y: Y0, w: 5.5, h: 4.9, fontSize: 13 });
+  note(s, "기술 용어(GroupKFold·그리드서치·부트스트랩)와 상세 결과는 부록 · 이 그래프는 학습 기간 6년으로 비교하던 당시 값");
+}
+
+// ---------------------------------------------------------------- 5. 자체 검증
+{
+  const s = content("5  자체 검증", "학습에 쓰지 않은 632개 건물로 시험: 10건 중 8건이 ±20% 안");
+  plain(s, "최근 1년 거래가 있는 건물 3,159개 중 632개를 미리 떼어 두고, 건물마다 가장 최근 거래가를 맞혀 봤다");
+  const hi = (t) => ({ text: t, options: { bold: true, color: COL.navy, fill: { color: "E3EAF6" } } });
+  table(s, [
+    ["시험 상황", "추정과 실제의 보통 차이", "±20% 안에 든 비율", "실제 가격이 80% 범위 안에 든 비율"],
+    ["처음 보는 건물", hi("9.3%"), hi("79.0%"), "82.0%"],
+    ["과거 거래가 있는 건물", hi("9.0%"), hi("80.2%"), "79.7%"],
+    ["(비교) 기본 추정만 썼을 때", "11.1% / 10.6%", "71.7% / 73.9%", "69.8% / 67.6%"],
+  ], { x: M, y: Y0, w: W - 2 * M, colW: [3.6, 2.8, 2.6, 3.133], fontSize: 15, rowH: 0.62 });
+  const cols = [["강서 화곡동", "8.6%", "80%"], ["관악구", "9.0%", "84%"], ["강남구", "9.3%", "75%"]];
+  text(s, "지역별(과거 거래가 있는 건물) — 보통 차이 · ±20% 안", { x: M, y: 4.45, w: 7, h: 0.35, fontSize: 13, bold: true, color: COL.navy });
+  cols.forEach(([g, a, b], i) => {
+    const x = M + i * 2.6;
+    card(s, x, 4.9, 2.4, 1.2);
+    text(s, g, { x: x + 0.2, y: 5.0, w: 2.0, h: 0.3, fontSize: 13, color: COL.ink2 });
+    text(s, `${a}  ·  ${b}`, { x: x + 0.2, y: 5.35, w: 2.1, h: 0.55, fontSize: 18, bold: true, color: COL.navy });
+  });
+  card(s, M + 7.9, 4.9, 4.23, 1.2, "E3EAF6");
+  text(s, "처음 세운 목표(보통 차이 10% 이하, ±20% 안 75% 이상, 범위 포함 70~90%)를 모두 달성",
+    { x: M + 8.1, y: 5.0, w: 3.9, h: 1.0, fontSize: 13, color: COL.ink, valign: "middle" });
+  note(s, "면적을 비워 넣은 경우, 평균 오차(MAPE) 등 상세는 부록 · 비교 행은 처음 보는 건물 / 과거 거래가 있는 건물");
+}
+
+// ---------------------------------------------------------------- 5. 신뢰도
+{
+  const s = content("5  자체 검증", "신뢰도가 정직하다 — 0.87이라고 한 물건은 실제로 86%가 맞았다");
+  plain(s, "틀릴 만한 물건에는 스스로 낮은 신뢰도를 매긴다 — 블라인드 평가에서 보는 핵심");
+  img(s, "D1_pred_vs_actual_reliability", M, Y0 - 0.1, 8.2, 5.1);
+  card(s, M + 8.45, Y0, 3.68, 4.85);
+  bullets(s, [
+    "왼쪽: 점이 대각선 띠(±20%) 안에 많을수록 정확. 632건 중 80%가 띠 안",
+    "오른쪽: 신뢰도별로 실제로 맞힌 비율. 점선 위에 있으면 말한 것보다 잘 맞힌 것",
+    "신뢰도 계산: 오차가 컸던 조건(동네 가격이 들쭉날쭉, 작은 집, 강남, 지하층, 오래된 건물 등)일수록 낮게",
+    "신뢰도 0.57 → 실제 59%, 0.78 → 81%, 0.87 → 86%",
+  ], { x: M + 8.7, y: Y0 + 0.25, w: 3.2, h: 4.5, fontSize: 13 });
+}
+
+// ---------------------------------------------------------------- 5. 크게 틀린 사례
+{
+  const s = content("5  자체 검증", "크게 틀린 경우는 대부분 시세와 다르게 거래된 집이었다");
+  plain(s, "가족 간 거래·급매처럼 사정이 있는 거래는 주소만으로 알 수 없다 — 모델의 한계로 솔직히 밝힌다");
+  stat(s, M, Y0, 3.4, "77%", "±20% 밖으로 틀린 125건 중 공시가격에 비해 유난히 싸거나 비싸게 거래된 비율", COL.orange);
+  stat(s, M, Y0 + 1.8, 3.4, "10 / 15", "가장 크게 틀린 15건 중 직거래(중개사 없이 직접 거래)");
+  table(s, [
+    ["물건", "실제 거래가", "추정", "차이", "이유로 보이는 것"],
+    ["강남 대치동 24.67㎡ 5층", "1.80억", "3.65억", "+103%", "공시가격과 거의 같은 값에 거래"],
+    ["강남 청담동 37.2㎡ 2층", "3.89억", "7.49억", "+93%", "직거래, 공시가격보다 싸게"],
+    ["관악 봉천동 60.09㎡ 3층", "2.10억", "3.88억", "+84%", "직거래"],
+    ["관악 봉천동 68.67㎡ 1층", "1.84억", "3.30억", "+79%", "직거래, 34년 된 건물"],
+    ["강서 화곡동 32.66㎡ 2층", "0.81억", "1.44억", "+78%", "공시가격보다 싸게, 36년 된 건물"],
+  ], { x: M + 3.7, y: Y0, w: 8.43, colW: [2.6, 1.15, 1.0, 0.85, 2.83], fontSize: 12, rowH: 0.45 });
+  bullets(s, [
+    "직거래(시험 대상의 10%)는 보통 차이가 22% — 사는 사람·파는 사람 사이 사정이 가격에 섞인다",
+    "지하층·오래된 건물은 미리 알 수 있어서 신뢰도를 낮춰 표시한다",
+    "비싼 집은 조금 낮게, 싼 집은 조금 높게 추정하는 경향도 있다(강남이 평균 5% 낮게 나오는 이유)",
+  ], { x: M + 3.85, y: 4.75, w: 8.2, h: 2.0, fontSize: 13 });
+}
+
+// ---------------------------------------------------------------- 6. 예시 산출
+{
+  const s = content("6  예시 산출", "지역별 1건 — 호가 있을 때, 면적이 빌 때, 지하층일 때");
+  plain(s, "모델이 실제로 내놓는 결과: 추정값, 가격 범위, 신뢰도, 그리고 계산 근거 한 줄");
+  const ex = [
+    ["강서 화곡동 354-41", "2층 203호 · 34.01㎡", "2.43억", "1.97 ~ 2.98억", "0.80", "공시가격 1.34억 × 동네 배율 1.78 = 2.38억, 건물 특징으로 2% 올림", "−13.6%"],
+    ["관악 봉천동 898-9", "3층 · 면적 모름", "2.47억", "2.00 ~ 3.03억", "0.80", "공시가격 1.28억 × 배율 1.88 = 2.40억, 3% 올림. 면적은 공시가격 자료(39.76㎡)로 채움", "+7.3%"],
+    ["강남 일원동 661-1", "지하 1층 · 49.08㎡", "5.30억", "3.81 ~ 7.53억", "0.59", "공시가격 2.05억 × 배율 2.42 = 4.96억, 7% 올림. 지하·강남이라 신뢰도 낮고 범위가 넓다", "−14.2%"],
+  ];
+  const cw = (W - 2 * M - 0.5) / 3;
+  ex.forEach(([addr, cond, est, rng, conf, basis, err], i) => {
+    const x = M + i * (cw + 0.25), y = Y0;
+    card(s, x, y, cw, 4.95);
+    text(s, addr, { x: x + 0.25, y: y + 0.2, w: cw - 0.5, h: 0.4, fontSize: 16, bold: true, color: COL.navy });
+    text(s, cond, { x: x + 0.25, y: y + 0.6, w: cw - 0.5, h: 0.35, fontSize: 13, color: COL.ink2 });
+    text(s, est, { x: x + 0.25, y: y + 1.0, w: cw - 0.5, h: 0.7, fontSize: 34, bold: true, color: COL.ink });
+    text(s, `80% 범위 ${rng}`, { x: x + 0.25, y: y + 1.75, w: cw - 0.5, h: 0.35, fontSize: 13 });
+    text(s, `신뢰도 ${conf}`, { x: x + 0.25, y: y + 2.1, w: cw - 0.5, h: 0.35, fontSize: 13, bold: true, color: conf < "0.7" ? COL.orange : COL.navy });
+    text(s, "근거", { x: x + 0.25, y: y + 2.6, w: cw - 0.5, h: 0.3, fontSize: 11, color: COL.muted });
+    text(s, basis, { x: x + 0.25, y: y + 2.9, w: cw - 0.5, h: 1.2, fontSize: 12, color: COL.ink });
+    text(s, `참고: 이 집의 실제 최근 거래를 빼고 계산했을 때 차이 ${err}`, { x: x + 0.25, y: y + 4.2, w: cw - 0.5, h: 0.6, fontSize: 11, color: COL.ink2 });
+  });
+  note(s, "실제 출력의 근거 문장은 더 자세하다(outputs/example_output.csv). 특정 집의 답을 외워 두는 방식은 쓰지 않았다");
+}
+
+// ---------------------------------------------------------------- 7. AI 활용 ①
+{
+  const s = content("7  AI 활용", "AI가 코드를 쓰고, 무엇을 할지와 맞는지는 내가 판단했다");
+  plain(s, "도구는 Claude Code(코드를 직접 읽고 실행하는 AI) 하나. 모든 단계에 썼다");
+  card(s, M, Y0, 4.1, 4.3);
+  text(s, "AI와 일하는 규칙을 파일로", { x: M + 0.3, y: Y0 + 0.15, w: 3.6, h: 0.4, fontSize: 16, bold: true, color: COL.navy });
+  bullets(s, [
+    "숫자를 지어내지 말 것, 데이터를 합칠 때마다 건수를 맞춰 볼 것, 상용 시세는 쓰지 말 것",
+    "결정마다 선택지·이유를 문서로(19건)",
+    "작업 이력을 매일 남겨 다음 날 이어서",
+    "AI의 결과는 내가 확인한 뒤 반영 — PR 14건",
+  ], { x: M + 0.3, y: Y0 + 0.7, w: 3.6, h: 3.5, fontSize: 13 });
+  table(s, [
+    ["단계", "AI가 한 것", "내가 판단·결정한 것"],
+    ["설계", "과제 요약, 감정평가 방식을 모델에 연결", "마감·기준일, 같은 집 과거 거래도 참고 사례로 쓰기"],
+    ["수집", "정부 API 응답 확인, 수집 코드", "어떤 데이터를 얼마나 받을지, 약관 문제 시 교체"],
+    ["다듬기", "중복·표기·이상한 거래를 걸러 내는 규칙", "어떤 거래를 뺄지(싼 쪽만 빼기)"],
+    ["모델", "시험 설계, 13가지 방법 비교, 신뢰도 계산", "다른 방법도 비교하라고 요구, 최종 모델·3년 결정"],
+    ["점검", "데이터 전수 점검, 문서와 코드 대조", "단계마다 다시 확인 요청"],
+    ["문서", "결정 기록·그림·발표 자료 초안", "공개 범위, 최종 검토"],
+  ], { x: M + 4.4, y: Y0, w: 7.73, colW: [0.95, 3.4, 3.38], fontSize: 12, rowH: 0.6 });
+}
+
+// ---------------------------------------------------------------- 7. AI 활용 ②
+{
+  const s = content("7  AI 활용", "AI가 틀린 것은 결과를 직접 확인할 때 잡혔다");
+  plain(s, "AI의 답을 그대로 믿지 않고 실행 결과·원래 데이터·과제 원문과 맞춰 보는 단계를 따로 뒀다");
+  table(s, [
+    ["잡은 방법", "AI가 틀린 것", "고친 결과"],
+    ["과제 원문·약관 확인", "지하철역 위치를 저장 금지 서비스(Kakao)에서 받아 저장", "정부 공공데이터로 교체"],
+    ["과제 원문·약관 확인", "'모은 데이터에 없는 집은 그 자리에서 조회' 요구를 놓침", "실행 중 조회 기능 추가"],
+    ["숫자 범위 점검", "정상 거래의 26%를 이상한 거래로 잘못 표시", "기준을 고쳐 0.4%로"],
+    ["숫자 범위 점검", "건물 사용승인일을 잘못 읽어 연식이 2006년", "코드 수정"],
+    ["직접 실행", "호수를 비교하는 버그로 20건 중 18건 오류", "코드와 검사 방법 수정"],
+    ["하나씩 열어 보기", "정상 거래 133건까지 '묶음 거래'로 잘못 분류", "확인 후 12건만"],
+    ["숫자 대조", "데이터를 보기 전에 쓴 그림 제목 6개가 실제와 다름", "결과 표와 맞춰 수정"],
+    ["내 질문", "근거 없이 '3년치만 모으자'고 제안", "6년 모은 뒤 시험해서 3년 결정"],
+  ], { x: M, y: Y0, w: 8.3, colW: [1.75, 4.35, 2.2], fontSize: 12, rowH: 0.5 });
+  card(s, M + 8.6, Y0, 3.53, 1.55);
+  text(s, "배운 점", { x: M + 8.85, y: Y0 + 0.1, w: 3, h: 0.35, fontSize: 15, bold: true, color: COL.navy });
+  text(s, "확인하는 단계를 따로 둘 때만 잡혔다 → 단계마다 점검을 요청했다", { x: M + 8.85, y: Y0 + 0.5, w: 3.05, h: 0.95, fontSize: 13 });
+  card(s, M + 8.6, Y0 + 1.75, 3.53, 3.15, "FBEDE7");
+  text(s, "AI 없이 했다면", { x: M + 8.85, y: Y0 + 1.85, w: 3, h: 0.35, fontSize: 15, bold: true, color: COL.orange });
+  text(s, "약 2.5~3.5개월", { x: M + 8.85, y: Y0 + 2.2, w: 3.05, h: 0.5, fontSize: 22, bold: true, color: COL.ink });
+  text(s, "파이썬 5개월 차 혼자 · 같은 범위 · 실제 3일", { x: M + 8.85, y: Y0 + 2.72, w: 3.05, h: 0.35, fontSize: 11, color: COL.ink2 });
+  bullets(s, [
+    "정부 API·데이터 처리·검증 방법을 처음 익히는 시간이 대부분",
+    "범위를 줄여도(방법 1개, 단순 신뢰도) 5~6주",
+    "AI가 줄인 것은 구현 시간, 고르고 의심하는 일은 직접",
+  ], { x: M + 8.85, y: Y0 + 3.15, w: 3.1, h: 1.65, fontSize: 12, color: COL.ink });
+}
+
+// ---------------------------------------------------------------- 8. 한계와 개선안
+{
+  const s = content("8  한계와 개선안", "남은 숙제는 사정이 있는 거래와 집 한 채 단위 정보");
+  plain(s, "실제 서비스로 쓰려면 데이터를 자동으로 새로 받고, 성적을 계속 다시 재야 한다");
+  const colW = (W - 2 * M - 0.3) / 2;
+  card(s, M, Y0, colW, 4.0);
+  text(s, "한계", { x: M + 0.3, y: Y0 + 0.15, w: 4, h: 0.4, fontSize: 18, bold: true, color: COL.orange });
+  bullets(s, [
+    "가족 간 거래·급매는 구별 못 하고 신뢰도도 못 낮춘다",
+    "비싼 집은 조금 낮게, 싼 집은 조금 높게 추정한다",
+    "강남 안에서는 위험한 물건을 신뢰도로 잘 가리지 못한다",
+    "호수까지 넣은 입력의 정확도는 시험하지 못했다(실거래 자료에 호수가 없음)",
+    "공시가격이 없는 집은 정확도가 낮다(신뢰도 0.10으로 표시)",
+    "1년이 지나면 3~5% 낮게 추정한다 — 갱신이 필요",
+  ], { x: M + 0.3, y: Y0 + 0.7, w: colW - 0.6, h: 3.2, fontSize: 13 });
+  const x2 = M + colW + 0.3;
+  card(s, x2, Y0, colW, 4.0);
+  text(s, "실제 서비스에 붙이려면", { x: x2 + 0.3, y: Y0 + 0.15, w: 5, h: 0.4, fontSize: 18, bold: true, color: COL.navy });
+  bullets(s, [
+    "실거래가는 매달, 공시가격은 매년 자동으로 새로 받기",
+    "새 거래로 매달 성적을 다시 재고, 기준보다 떨어지면 다시 학습",
+    "사정이 있는 거래를 찾아내는 장치(등기부 등 추가 자료)",
+    "집 한 채 단위 정보(방향·조망·내부 상태), 학교·공원·상권 거리",
+    "주변 비슷한 거래를 근거로 함께 보여 주기",
+    "미리 학습해 두고 요청마다 바로 답하기",
+  ], { x: x2 + 0.3, y: Y0 + 0.7, w: colW - 0.6, h: 3.2, fontSize: 13 });
+}
+
+// ---------------------------------------------------------------- 정리
+{
+  const s = pres.addSlide({ masterName: "DARK" });
+  text(s, "정리", { x: M + 0.2, y: 1.2, w: 6, h: 0.5, fontSize: 18, color: COL.orange, bold: true });
+  bullets(s, [
+    "정부가 매긴 공시가격에서 출발하면 단순하고 설명하기 쉬운 추정이 된다 — 가격 차이의 87%",
+    "공시가격이 놓친 오래된 건물·저층·위치 차이를 기계학습으로 보정해 오차를 줄였다(11% → 9%)",
+    "얼마나 믿을지를 과거 오차로 계산해, 신뢰도와 실제 적중률을 맞췄다",
+    "AI는 모든 단계에 썼고, 무엇을 할지와 맞는지는 직접 판단했다",
+  ], { x: M + 0.2, y: 1.9, w: 11.5, h: 3.6, fontSize: 18, color: COL.white });
+  text(s, "코드·데이터·결정 기록: github.com/KimInSeok-DA/DA_Seoul_Villa_AVM  |  다음 장부터 부록(기술 상세)", { x: M + 0.2, y: 6.3, w: 12, h: 0.4, fontSize: 14, color: "C9D3E6" });
+}
+
+// ================================================================ 부록
+{
+  const s = pres.addSlide({ masterName: "DARK" });
+  text(s, "부록", { x: M + 0.2, y: 2.6, w: 6, h: 0.5, fontSize: 18, color: COL.orange, bold: true });
+  text(s, "기술 상세", { x: M + 0.2, y: 3.1, w: 11, h: 0.9, fontSize: 40, bold: true, color: COL.white });
+  text(s, "용어 풀이 · 기술 스택과 데이터 상세 · 검증 상세표 · 모델 비교 방법 · 신뢰도 계산 방법", { x: M + 0.2, y: 4.1, w: 11, h: 0.4, fontSize: 16, color: "C9D3E6" });
+}
+
+// 부록 A. 용어 풀이
+{
+  const s = content("부록 A", "용어 풀이");
+  table(s, [
+    ["용어", "뜻(본문에서 쓴 쉬운 말)"],
+    ["B1(기본 추정)", "공시가격 × 실거래/공시 비율. 비율은 같은 건물 → 법정동 → 구 순서로 가져오고, 거래가 적으면 동네 값 쪽으로 당긴다"],
+    ["시점 지수(시점 보정)", "구별·월별 실거래/공시 비율의 중앙값(3개월 이동평균). 과거 거래가를 기준일 가격으로 환산"],
+    ["XGBoost", "결정 나무를 여러 개 이어 붙여 앞 나무의 오차를 다음 나무가 줄이는 기계학습 방법(그래디언트 부스팅)"],
+    ["직접 / 잔차 / 평균", "직접: 건물 특징으로 log ㎡당 가격 예측 / 잔차: log(실거래 ÷ B1) 예측해 B1을 보정 / 평균: 두 추정의 기하평균"],
+    ["PNU(지번)", "법정동코드 10자리 + 산 여부 1자리 + 본번 4자리 + 부번 4자리. 데이터를 합치는 열쇠"],
+    ["홀드아웃", "학습에 쓰지 않고 시험용으로 떼어 둔 표본(건물 632개)"],
+    ["GroupKFold", "교차검증을 건물(그룹) 단위로 나눠 같은 건물이 학습·검증에 섞이지 않게 함"],
+    ["그리드서치", "하이퍼파라미터(나무 깊이·개수 등) 조합을 모두 시험해 교차검증 성적이 가장 좋은 것을 고름"],
+    ["부트스트랩", "표본을 복원 추출로 2,000번 다시 뽑아 성적 차이의 95% 구간을 구함 — 0을 포함하지 않으면 우연이 아니라고 봄"],
+    ["MAPE / 중앙값 오차율", "|추정 − 실제| ÷ 실제의 평균 / 중앙값"],
+    ["수정 Z-점수", "중앙값과 MAD로 계산한 이상치 점수. |z| > 3.5를 이상치로 봄(Iglewicz & Hoaglin 1993)"],
+    ["결정계수 / VIF", "결정계수: 변수가 설명하는 분산 비율 / VIF: 변수끼리 얼마나 겹치는지(다중공선성)"],
+  ], { x: M, y: 1.35, w: W - 2 * M, colW: [2.6, 9.533], fontSize: 12, rowH: 0.41 });
+}
+
+// 부록 B. 기술 스택·데이터 상세
+{
+  const s = content("부록 B", "기술 스택과 데이터 상세");
+  table(s, [
+    ["구분", "사용"],
+    ["언어·환경", "Python 3.12+ (개발 3.14.5), uv + requirements.txt — 3.12·3.13·3.14 새 환경에서 같은 출력"],
+    ["라이브러리", "pandas 3.0.6, numpy 2.5.3, XGBoost 3.4.1, scikit-learn 1.9.1, requests, python-dotenv, Jupyter, matplotlib"],
+    ["API 키", "DATA_GO_KR_API_KEY(실거래·건축물대장), VWORLD_API_KEY(공시가격·연속지적도) — 환경변수"],
+  ], { x: M, y: 1.35, w: W - 2 * M, colW: [1.8, 10.333], fontSize: 12, rowH: 0.4 });
+  table(s, [
+    ["데이터", "수집 방식", "기간·기준", "받은 건수", "정제 후 · 사용"],
+    ["연립다세대 매매 실거래", "API, 구·월별 전수", "2020-10~2026-10", "36,997건", "33,886건 · 학습 최근 3년 14,520건"],
+    ["연립다세대 전월세", "API", "2020-10~2026-10", "143,109건", "사용 안 함"],
+    ["공동주택가격(호별)", "API, 거래 지번마다", "2026(없으면 최근 연도)", "9,928개 지번", "107,236호"],
+    ["건축물대장 표제부", "API, 거래 지번마다", "수집일 현행", "9,928개 지번", "연식·승강기·층수·세대수·주차"],
+    ["필지 좌표·공시지가", "API(연속지적도), 3개 구 전체", "2025 공시지가", "123,615필지", "좌표·땅값·역 거리"],
+    ["지하철역", "공공데이터 파일", "2026-06-30", "367개", "275개 역"],
+    ["법정동코드", "공공데이터 파일", "2026-06-30", "—", "3개 구 30개 동"],
+  ], { x: M, y: 3.25, w: W - 2 * M, colW: [2.5, 2.6, 2.35, 1.6, 3.083], fontSize: 12, rowH: 0.4 });
+  text(s, "유형: 다세대 30,551 · 연립 3,203 · 혼합 표기 132건(정제 후). 정제: 해제 2,188 · 낮은 이상치(수정 Z < −3.5) 331 · 일괄 매매 합계 12 · 재건축 전 580 제외",
+    { x: M, y: 6.6, w: W - 2 * M, h: 0.35, fontSize: 11, color: COL.ink2 });
+}
+
+// 부록 C. 검증 상세표
+{
+  const s = content("부록 C", "자체 검증 상세(632개 건물, 입력: 호 없음)");
+  table(s, [
+    ["상황", "면적", "중앙값 오차", "MAPE", "±10% 적중", "±20% 적중", "80% 구간 포함"],
+    ["A 처음 보는 건물", "있음", "9.3%", "13.7%", "52.8%", "79.0%", "82.0%"],
+    ["A 처음 보는 건물", "비움", "10.9%", "16.1%", "46.7%", "73.7%", "80.2%"],
+    ["B 같은 건물 과거 거래 있음", "있음", "9.0%", "13.0%", "54.6%", "80.2%", "79.7%"],
+    ["B 같은 건물 과거 거래 있음", "비움", "10.7%", "15.6%", "47.5%", "75.0%", "77.8%"],
+    ["기준선 B1 (A / B)", "있음", "11.1% / 10.6%", "15.8% / 14.7%", "45.1% / 48.3%", "71.7% / 73.9%", "69.8% / 67.6%"],
+  ], { x: M, y: 1.35, w: W - 2 * M, colW: [3.2, 0.8, 1.6, 1.6, 1.6, 1.65, 1.683], fontSize: 12, rowH: 0.42 });
+  table(s, [
+    ["신뢰도 구간", "A 표본 / 평균 신뢰도 / 실제 ±20% 적중", "B 표본 / 평균 신뢰도 / 실제 ±20% 적중"],
+    ["0.6 이하", "53 / 0.57 / 66.0%", "44 / 0.57 / 59.1%"],
+    ["0.6~0.7", "136 / 0.65 / 64.7%", "97 / 0.65 / 70.1%"],
+    ["0.7~0.8", "247 / 0.78 / 83.4%", "185 / 0.78 / 81.1%"],
+    ["0.8 초과", "196 / 0.86 / 86.7%", "306 / 0.87 / 85.9%"],
+  ], { x: M, y: 4.15, w: W - 2 * M, colW: [2.0, 5.07, 5.063], fontSize: 12, rowH: 0.4 });
+  text(s, "분할: 최근 12개월 거래가 있는 평가 권역 건물 3,159개 중 20%(시드 42)를 건물 단위로 분리, 건물마다 최근 거래 1건. A는 그 건물 거래를 모두 빼고, B는 대상 거래 이전 거래만 남김. 구간·신뢰도 보정은 나머지 건물 1만 건으로",
+    { x: M, y: 6.3, w: W - 2 * M, h: 0.55, fontSize: 11, color: COL.ink2 });
+}
+
+// 부록 D. 모델 비교 방법
+{
+  const s = content("부록 D", "모델 비교 방법과 학습 기간");
+  bullets(s, [
+    "후보 13개: Ridge · KNN · 랜덤포레스트 · XGBoost × {직접(log ㎡당 가격) / 잔차(log 실거래÷B1) / 둘의 기하평균} + B1",
+    "Pipeline(결측 채움·표준화 → 모델) + GridSearchCV, 학습 세트 안에서만 GroupKFold(5, 그룹 = PNU), 기준 MAE(log)",
+    "누수 방지: 학습 행의 B1 근거는 그 거래보다 앞선 같은 건물 거래와 자기 건물을 뺀 동네 통계로만 계산",
+    "상황 A(처음 보는 건물) · B(같은 건물 앞선 거래 있음) · T(2025-08까지 학습해 그 뒤 1년 맞히기)",
+    "선정 기준(±20% 적중·중앙값 오차·MAPE, 세 상황 순위, 부트스트랩 95% 구간, 단순성)을 결과 전에 문서로 고정",
+    "결과: XGB-평균이 평균 순위 1위(1.8), 가장 나쁜 순위도 1위(2.3). 직접 방식은 T에서, 잔차 방식은 A에서 약해 평균",
+  ], { x: M, y: 1.35, w: 6.9, h: 5.3, fontSize: 13 });
+  table(s, [
+    ["학습 기간", "학습 거래", "A ±20% / 중앙값", "B ±20% / 중앙값"],
+    ["3년(채택)", "14,520", "79.0% / 9.3%", "80.2% / 9.0%"],
+    ["5년", "24,531", "79.0% / 9.7%", "78.5% / 9.3%"],
+    ["6년", "33,886", "74.5% / 9.9%", "78.2% / 9.5%"],
+  ], { x: M + 7.2, y: 1.35, w: 4.93, colW: [1.25, 1.08, 1.3, 1.3], fontSize: 12, rowH: 0.45 });
+  text(s, "3년 − 6년: A ±20% 적중 +4.4%p [+2.2, +6.8], 평균 오차 A −1.1%p · B −0.9%p(부트스트랩 95% 구간). 최종 검증과 분리한 보정 표본에서도 같은 방향(72.5% → 75.9%)",
+    { x: M + 7.2, y: 3.8, w: 4.93, h: 1.4, fontSize: 12, color: COL.ink2 });
+  note(s, "출처: docs/의사결정/1007_10_ML_비교.md, 1007_13_오차_분석.md");
+}
+
+// 부록 E. 신뢰도 계산
+{
+  const s = content("부록 E", "80% 구간과 신뢰도 계산 방법");
+  bullets(s, [
+    "보정 표본: 최종 검증 632개를 뺀 나머지 후보 건물 2,527개를 5묶음으로 나눠 돌아가며 시험 → 약 1만 건의 오차",
+    "오차 점수 = |log 오차|를 예측 때 아는 변수로 최소제곱 회귀한 값: 동네 비율의 흩어짐, 같은 건물 비율의 흩어짐·동네와 차이·거래 수, 면적, 강남·화곡, 면적 비움, XGBoost 두 추정의 차이, ML 보정 배율, 지하층, 30년 초과",
+    "점수 10분위마다 log 오차의 10%·90% 분위수 → 80% 구간(정규분포 가정 없이 실제 오차 분포)",
+    "점수 10분위마다 ±20% 적중률 → 신뢰도, 점수가 클수록 낮아지게 단조 보정(isotonic)",
+    "공시가격이 없는 추정(㎡단가)은 표본이 적어 신뢰도 0.10으로 고정",
+    "수집에 없는 지번은 실행 중 VWorld 공시가격·건축HUB 대장을 조회(키 없으면 조회 없이 계속하고 근거에 적음)",
+  ], { x: M, y: 1.35, w: W - 2 * M, h: 5.3, fontSize: 14 });
+  note(s, "출처: docs/의사결정/1007_09_구간_신뢰도_보정.md, 1007_12_실행_중_조회.md, 1007_13_오차_분석.md");
+}
+
+pres.writeFile({ fileName: OUT }).then((f) => console.log("작성:", f));

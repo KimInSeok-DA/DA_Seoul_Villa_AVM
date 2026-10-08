@@ -283,7 +283,7 @@ for sc, col, mk in [("A", "#eb6834", "s"), ("B", "#2a78d6", "o")]:
     ax.plot(r.conf, r.hit, color=col, lw=2, marker=mk, ms=8, mec=SURF, mew=2, label={"A": "처음 보는 건물", "B": "같은 건물 과거 거래 있음"}[sc])
 ax.plot([0.45, 0.95], [0.45, 0.95], color=MUTED, lw=1, ls="--"); ax.text(0.86, 0.89, "신뢰도 = 실제", color=MUTED, fontsize=8, rotation=38)
 ax.set_xlim(0.45, 0.95); ax.set_ylim(0.45, 0.95); ax.set_xlabel("평균 신뢰도(5분위)"); ax.set_ylabel("실제 ±20% 적중률"); ax.legend(loc="upper left")
-ax.set_title("신뢰도 ≈ 실제 적중률(대부분 약간 보수적)")
+ax.set_title("신뢰도와 실제 적중률이 거의 같다(대부분 약간 보수적)")
 save(fig, "D1_pred_vs_actual_reliability")"""),
     md("""## 관찰
 
