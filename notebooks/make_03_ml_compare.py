@@ -111,7 +111,7 @@ plt.tight_layout(); plt.show()"""),
     md("""## 8. 결론
 
 - 최종 모델: **XGB-평균**(XGBoost 직접 × XGBoost 잔차의 기하평균). 평균 순위·가장 나쁜 순위 모두 1위, 세 상황 모두에서 B1보다 확실히 낫다
-- 수치·판단·한계는 `docs/의사결정/1007_10_ML_비교.md` §4~5"""),
+- 수치·판단·한계는 `docs/의사결정/1007_10_ML_비교.md` §4～5"""),
 ]
 nb = nbf.v4.new_notebook(cells=cells, metadata={"kernelspec": {"name": "python3", "display_name": "Python 3"}})
 path = Path(__file__).with_name("03_ML_비교.ipynb")
