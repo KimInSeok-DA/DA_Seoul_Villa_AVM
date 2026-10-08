@@ -19,6 +19,8 @@
    - 일괄 매매 합계 가격 제외(1007_11): 여러 호를 한 번에 사고 판 거래는 호마다 합계 금액이 적혀 있다
 7. 표제부(건물 정보) 연결
    - 재건축 전 거래 제외(1007_11): 지금 표제부 건물의 사용승인 전에 옛 건물로 거래된 것
+   - 철거된 건물 거래 제외(1008_02): 현행 대장에 건물이 없는 지번에서 폐쇄말소대장의 말소일 이전 거래.
+     말소일 뒤 거래(새 건물, 아직 대장에 없음)는 남기고, 옛 건물 공시가격으로 채운 건물 정보는 비운다
 8. 파생 변수(연식·지하·최상층)와 층 정합성 불일치 표시
 """
 import sys
@@ -34,6 +36,7 @@ ROOT = Path(__file__).resolve().parents[1]
 RAW = ROOT / "data" / "raw" / "trade_all.csv"
 PRICE = ROOT / "data" / "processed" / "apt_price.csv"
 TITLE = ROOT / "data" / "processed" / "bld_title.csv"
+CLOSED = ROOT / "data" / "reference" / "closed_titles.csv"  # 폐쇄말소대장 표제부(src/collect_closed_titles.py)
 OUT = ROOT / "data" / "processed" / "trades.csv"
 Z_CUT = 3.5  # Iglewicz & Hoaglin(1993) 수정 Z-점수 권고 기준
 # 일괄 매매: 호마다 비율이 구·연도 시장 중앙값의 3배 이상인데 묶음 합계로는 0.5~1.5배. 2.5배로 하면 신축 분양(층만 다른 같은 면적 호를
@@ -144,6 +147,19 @@ def main():
     rebuilt = (t["deal_date"] < apr) & (t["build_year"] < apr.dt.year - REBUILT_GAP)
     step("재건축 전 거래 제외", int(rebuilt.sum()), f"건물 {t.loc[rebuilt, 'pnu'].nunique()}개")
     t = t[~rebuilt].copy()
+    # 철거된 건물 거래: 현행 대장에 없는 지번(1007_02)은 대부분 거래 뒤 철거되어 폐쇄말소대장으로 옮겨진 건물
+    closed = pd.read_csv(CLOSED, dtype={"pnu": str}, encoding="utf-8-sig")
+    last_ersr = pd.to_datetime(closed["ersr_date"], errors="coerce").groupby(closed["pnu"]).max()
+    ersr = t["pnu"].map(last_ersr)
+    no_title = t["title_source"] != "건축물대장"
+    demolished = no_title & ersr.notna() & (t["deal_date"] <= ersr)
+    newer = no_title & ersr.notna() & (t["deal_date"] > ersr)
+    step("철거된 건물 거래 제외", int(demolished.sum()),
+         f"건물 {t.loc[demolished, 'pnu'].nunique()}개(대장 없는 지번 {t.loc[no_title, 'pnu'].nunique()}개 중 말소 기록 "
+         f"{t.loc[no_title & ersr.notna(), 'pnu'].nunique()}개), 말소 뒤 새 건물 거래 {int(newer.sum())}건은 남김")
+    t.loc[newer, ["n_dong", "grnd_flr", "ugrnd_flr", "hhld_cnt"]] = np.nan  # 옛 건물 공시가격으로 채운 값
+    t.loc[newer, "title_source"] = "없음"
+    t = t[~demolished].copy()
 
     # 8. 파생 변수·정합성 표시
     t["age"] = t["deal_year"] - t["build_year"]  # 건축년도·거래연도 대신 연식 하나만(완전 공선)
