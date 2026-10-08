@@ -108,8 +108,8 @@ def parse_address(refs, sigungu, dong, jibun):
 
 
 def parse_floor(floor):
-    s = str(floor).strip().upper().replace("층", "")
-    m = re.fullmatch(r"(B|지하|지)?\s*(-?\d+)", s)
+    s = str(floor).strip().upper().replace("층", "").replace("F", "")
+    m = re.fullmatch(r"(B|지하|지)?\s*(-?\d+)(?:\.0+)?", s)  # 엑셀이 숫자로 바꾼 3.0도 받음
     if not m:
         raise InputError(f"층 해석 불가('{floor}')")
     n = int(m.group(2))
@@ -400,8 +400,9 @@ def estimate(refs, model, row, use_public=True, calibrator=None, ml=None, live=N
     calibrator가 있으면 구간·신뢰도를 검증 오차로 보정(1007_09), 없으면 근거 수준 규칙(1007_08)"""
     pnu, bjd, sgg, addr_note = parse_address(refs, row.get("sigungu"), row.get("dong"), row.get("jibun"))
     floor = parse_floor(row.get("floor"))
-    ho = str(row.get("ho") or "").strip() or None
-    area = pd.to_numeric(row.get("area_m2"), errors="coerce")
+    ho = re.sub(r"\.0+$", "", str(row.get("ho") or "").strip()) or None  # 엑셀이 숫자로 바꾼 301.0 → 301
+    a = re.match(r"\s*(\d+(?:\.\d+)?)", str(row.get("area_m2") or ""))  # 42.5㎡·42.5 m2 등 단위 표기 허용(앞의 숫자만)
+    area = float(a.group(1)) if a else None
     area = None if pd.isna(area) or area <= 0 else float(area)
     known = pnu in refs.parcels.index or pnu in refs.ap_by_pnu or pnu in model.n_trades.index
     if not known:  # 필지·공시가격·거래 어디에도 없으면 존재하지 않는 지번으로 본다(필지는 3개 구 전체를 수집)

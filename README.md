@@ -52,10 +52,11 @@ python predict.py --input input.csv --output output.csv
 ```
 
 - 입력 컬럼: `id, sigungu, dong, jibun, floor, ho, area_m2` (`ho`, `area_m2`는 비어 있을 수 있음) — `dong`은 법정동 또는 행정동(화곡1동·낙성대동 등, 행정안전부 연계표로 법정동을 찾음, [1008_01](docs/의사결정/1008_01_행정동_입력.md))
-- 출력 컬럼: `id, price_est, price_low, price_high, confidence, basis, status`
+- 출력 컬럼: `id, price_est, price_low, price_high, confidence, basis, status` — `status`는 `ok` 또는 `fail`. 산출하지 못한 행은 `fail`이고 사유(권역 밖, 주소 해석 불가 등)를 `basis`에 적는다
 - 저장소의 정제 데이터로 실행할 때마다 모델을 다시 맞춘다(최근 3년 거래, 20건 약 20초). 입력 지번이 수집 데이터에 없을 때만 공시가격·건축물대장을 실행 중에 조회한다([1007_12](docs/의사결정/1007_12_실행_중_조회.md)) — 키가 없으면 조회 없이 추정을 계속하고 `basis`에 적는다. 새 거래를 정제 데이터에 더하고 다시 실행하면 그대로 반영된다
 - `price_low`～`price_high`는 80% 구간, `confidence`는 검증에서 비슷한 조건의 추정이 실거래가 ±20% 안에 든 비율이다. 둘 다 검증 오차로 만든 보정표 `data/processed/calibration.json`(`src/build_calibration.py`)으로 정한다
-- 규격 검사: `python tests/check_output.py --input tests/sample_input.csv --output output.csv --expect-ok`
+- 입력 파일은 UTF-8(BOM 있음·없음)과 엑셀이 저장한 CP949 모두 읽는다. 컬럼 순서·대소문자, 값 앞뒤 공백, `3.0`층·`301.0`호·`42.5㎡`처럼 엑셀이 바꾼 표기도 받는다(`tests/excel_cp949_input.csv`로 확인)
+- 규격 검사(실행 뒤 같은 입력·출력으로): `python tests/check_output.py --input input.csv --output output.csv` — 모든 행이 권역 안 정상 주소일 때는 `--expect-ok`를 붙여 실패 0건까지 확인한다
 - 예외 입력 예시: `tests/edge_input.csv`(권역 밖, 주소 해석 불가, 지하 표기, 면적 없음 등), 행정동 입력 예시: `tests/admin_dong_input.csv`
 
 ## 환경 변수
