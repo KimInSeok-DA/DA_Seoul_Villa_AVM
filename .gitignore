@@ -32,3 +32,6 @@ Thumbs.db
 # predict.py 실행 결과(테스트용)
 output*.csv
 input.csv
+
+# 상용 시세 서비스 조회 화면(개인 참고용, 공개 저장소에 올리지 않음)
+하우스머치 비교/
