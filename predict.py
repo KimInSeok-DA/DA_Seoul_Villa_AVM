@@ -14,7 +14,7 @@
 - price_low~price_high는 80% 구간, confidence는 '검증에서 비슷한 조건의 추정이 실거래가 ±20% 안에 든 비율'.
   둘 다 data/processed/calibration.json(src/build_calibration.py, 1007_09)으로 정한다
 - dong은 법정동을 먼저 찾고, 없으면 행정동(화곡1동·낙성대동 등)으로 보고 지번이 있는 법정동으로 바꿔 basis에 적는다(1008_01)
-- 권역 밖·주소 해석 불가는 status=fail과 사유. 한 행이 실패해도 나머지는 계속한다
+- 권역 밖·주소 해석 불가는 status=fail, 사유는 basis에. 한 행이 실패해도 나머지는 계속한다
 """
 import argparse
 import sys
@@ -31,6 +31,20 @@ from ml import MLModel  # noqa: E402
 OUT_COLS = ["id", "price_est", "price_low", "price_high", "confidence", "basis", "status"]
 
 
+def read_input(path):
+    """입력 CSV — UTF-8(BOM 있음·없음) 외에 엑셀이 한글 윈도우에서 저장하는 CP949도 읽는다. 컬럼 이름 앞뒤 공백·대소문자, 값 앞뒤 공백은 무시"""
+    for enc in ("utf-8-sig", "cp949"):
+        try:
+            inp = pd.read_csv(path, dtype=str, keep_default_na=False, encoding=enc)
+            break
+        except UnicodeDecodeError:
+            continue
+    else:
+        raise SystemExit(f"입력 파일 인코딩을 읽을 수 없습니다(UTF-8·CP949 아님): {path}")
+    inp.columns = [c.strip().lower() for c in inp.columns]
+    return inp.apply(lambda s: s.str.strip())
+
+
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser(description="서울 다세대(빌라) 시세 산정")
@@ -39,8 +53,7 @@ def main():
     args = ap.parse_args()
 
     t0 = time.time()
-    inp = pd.read_csv(args.input, dtype=str, keep_default_na=False, encoding="utf-8-sig")
-    inp.columns = [c.strip() for c in inp.columns]
+    inp = read_input(args.input)
     refs = load_refs()
     ti = TimeIndex().fit(refs.trades)
     model = BaselineModel().fit(refs.trades, ti)
@@ -63,10 +76,10 @@ def main():
             })
         except InputError as e:
             out.update({"price_est": "", "price_low": "", "price_high": "", "confidence": 0.0,
-                        "basis": str(e), "status": f"fail: {e}"})
+                        "basis": str(e), "status": "fail"})  # 사유는 basis에(status는 ok/fail 두 값만)
         except Exception as e:  # 예상 못 한 오류도 그 행만 fail로 남기고 계속
             out.update({"price_est": "", "price_low": "", "price_high": "", "confidence": 0.0,
-                        "basis": f"처리 오류: {type(e).__name__}", "status": f"fail: 처리 오류({type(e).__name__}: {e})"})
+                        "basis": f"처리 오류({type(e).__name__}: {e})", "status": "fail"})
         rows.append(out)
 
     res = pd.DataFrame(rows, columns=OUT_COLS)
