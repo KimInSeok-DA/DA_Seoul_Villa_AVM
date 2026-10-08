@@ -53,7 +53,7 @@ python predict.py --input input.csv --output output.csv
 
 - 입력 컬럼: `id, sigungu, dong, jibun, floor, ho, area_m2` (`ho`, `area_m2`는 비어 있을 수 있음) — `dong`은 법정동 또는 행정동(화곡1동·낙성대동 등, 행정안전부 연계표로 법정동을 찾음, [1008_01](docs/의사결정/1008_01_행정동_입력.md))
 - 출력 컬럼: `id, price_est, price_low, price_high, confidence, basis, status`
-- 저장소의 정제 데이터로 실행할 때마다 모델을 다시 맞춘다(최근 3년 거래, 20건 약 17초). 입력 지번이 수집 데이터에 없을 때만 공시가격·건축물대장을 실행 중에 조회한다([1007_12](docs/의사결정/1007_12_실행_중_조회.md)) — 키가 없으면 조회 없이 추정을 계속하고 `basis`에 적는다. 새 거래를 정제 데이터에 더하고 다시 실행하면 그대로 반영된다
+- 저장소의 정제 데이터로 실행할 때마다 모델을 다시 맞춘다(최근 3년 거래, 20건 약 20초). 입력 지번이 수집 데이터에 없을 때만 공시가격·건축물대장을 실행 중에 조회한다([1007_12](docs/의사결정/1007_12_실행_중_조회.md)) — 키가 없으면 조회 없이 추정을 계속하고 `basis`에 적는다. 새 거래를 정제 데이터에 더하고 다시 실행하면 그대로 반영된다
 - `price_low`～`price_high`는 80% 구간, `confidence`는 검증에서 비슷한 조건의 추정이 실거래가 ±20% 안에 든 비율이다. 둘 다 검증 오차로 만든 보정표 `data/processed/calibration.json`(`src/build_calibration.py`)으로 정한다
 - 규격 검사: `python tests/check_output.py --input tests/sample_input.csv --output output.csv --expect-ok`
 - 예외 입력 예시: `tests/edge_input.csv`(권역 밖, 주소 해석 불가, 지하 표기, 면적 없음 등), 행정동 입력 예시: `tests/admin_dong_input.csv`
@@ -95,7 +95,7 @@ python predict.py --input input.csv --output output.csv
 ├─ notebooks/          검증·분석 노트북 (NN_주제.ipynb, make_NN_*.py가 생성)
 ├─ data/
 │  ├─ raw/             API 원본 응답 (저장소 제외, 다시 받을 수 있음)
-│  ├─ reference/       법정동코드표, 지하철역 좌표, 필지 좌표·공시지가
+│  ├─ reference/       법정동코드표·행정동 연계표, 지하철역 좌표, 필지 좌표·공시지가, 폐쇄말소대장, 부동산원 지수
 │  └─ processed/       정제 데이터 (저장소에 포함, predict.py가 읽음)
 ├─ outputs/            다시 만들 수 있는 표·그림
 ├─ presentation/       발표 자료 생성 스크립트(build_deck.js, pptxgenjs)와 .pptx
