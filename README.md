@@ -57,7 +57,7 @@ python predict.py --input input.csv --output output.csv
 - `price_low`～`price_high`는 80% 구간, `confidence`는 검증에서 비슷한 조건의 추정이 실거래가 ±20% 안에 든 비율이다. 둘 다 검증 오차로 만든 보정표 `data/processed/calibration.json`(`src/build_calibration.py`)으로 정한다
 - 입력 파일은 UTF-8(BOM 있음·없음)과 엑셀이 저장한 CP949 모두 읽는다. 컬럼 순서·대소문자, 값 앞뒤 공백, `3.0`층·`301.0`호·`42.5㎡`처럼 엑셀이 바꾼 표기도 받는다(`tests/excel_cp949_input.csv`로 확인)
 - 규격 검사(실행 뒤 같은 입력·출력으로): `python tests/check_output.py --input input.csv --output output.csv` — 모든 행이 권역 안 정상 주소일 때는 `--expect-ok`를 붙여 실패 0건까지 확인한다
-- 예외 입력 예시: `tests/edge_input.csv`(권역 밖, 주소 해석 불가, 지하 표기, 면적 없음 등), 행정동 입력 예시: `tests/admin_dong_input.csv`, 권역 밖 1건을 섞은 실행 예시: `tests/demo_input.csv`(PPT 실행 화면)
+- 예외 입력 예시: `tests/edge_input.csv`(권역 밖, 주소 해석 불가, 지하 표기, 면적 없음 등), 행정동 입력 예시: `tests/admin_dong_input.csv`, 정상·실패 사유 6종을 섞은 실행 예시: `tests/demo_errors_input.csv`(PPT 실행 화면)
 
 ## 환경 변수
 
@@ -99,7 +99,7 @@ python predict.py --input input.csv --output output.csv
 │  ├─ reference/       법정동코드표·행정동 연계표, 지하철역 좌표, 필지 좌표·공시지가, 폐쇄말소대장, 부동산원 지수
 │  └─ processed/       정제 데이터 (저장소에 포함, predict.py가 읽음)
 ├─ outputs/            다시 만들 수 있는 표·그림
-├─ presentation/       발표 자료 생성 스크립트(build_deck.js, pptxgenjs)와 .pptx
+├─ presentation/       발표 자료 생성 스크립트(build_deck.js, pptxgenjs)와 .pptx(본편 30장, --summary로 요약본 9장)
 ├─ milestones/         재현이 필요한 시점의 결과·모델 메타데이터 보존
 └─ docs/
    ├─ 진행_과정.md      단계별 요약·흐름도 (처음 볼 문서)
