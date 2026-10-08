@@ -21,12 +21,16 @@ import sys
 import time
 from pathlib import Path
 
-import pandas as pd
+try:  # 설치를 빠뜨리거나 가상환경 밖의 파이썬으로 실행하면 긴 오류 대신 할 일을 알려 준다
+    import pandas as pd
 
-sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
-from avm import BaselineModel, Calibrator, InputError, TimeIndex, estimate, load_refs  # noqa: E402
-from live_lookup import LiveLookup  # noqa: E402
-from ml import MLModel  # noqa: E402
+    sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
+    from avm import BaselineModel, Calibrator, InputError, TimeIndex, estimate, load_refs  # noqa: E402
+    from live_lookup import LiveLookup  # noqa: E402
+    from ml import MLModel  # noqa: E402
+except ModuleNotFoundError as e:
+    sys.exit(f"필요한 패키지가 없습니다({e.name}). 먼저 `pip install -r requirements.txt`를 실행하세요"
+             f"(가상환경을 썼다면 켠 뒤 실행, README '설치'). 지금 파이썬: {sys.executable}")
 
 OUT_COLS = ["id", "price_est", "price_low", "price_high", "confidence", "basis", "status"]
 
