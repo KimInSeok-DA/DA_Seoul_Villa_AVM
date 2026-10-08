@@ -31,8 +31,13 @@ from avm import load_refs, holdout_split, holdout_targets, run_holdout, evaluate
 plt.rcParams["font.family"] = "Malgun Gothic"; plt.rcParams["axes.unicode_minus"] = False
 OUT = ROOT / "outputs"; OUT.mkdir(exist_ok=True)
 refs = load_refs()
-test_pnu = holdout_split(refs.trades)
-test_pnu.to_csv(ROOT / "data/processed/holdout_pnu.csv", index=False)
+# 검증 건물은 한 번 뽑아 고정한다(1007_07). 정제 규칙이 바뀌어 거래가 달라져도 같은 건물로 비교하도록 파일을 읽는다
+HOLDOUT = ROOT / "data/processed/holdout_pnu.csv"
+if HOLDOUT.exists():
+    test_pnu = pd.read_csv(HOLDOUT, dtype=str)["pnu"]
+else:
+    test_pnu = holdout_split(refs.trades)
+    test_pnu.to_csv(HOLDOUT, index=False)
 targets = holdout_targets(refs.trades, test_pnu)
 print(f"검증 건물 {len(test_pnu)}개, 대상 거래 {len(targets)}건")
 targets.assign(권역=targets.sgg_cd.map(SGG_NAME)).groupby("권역").size()"""),
